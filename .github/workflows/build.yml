@@ -48,7 +48,26 @@ jobs:
       - name: Abhängigkeiten
         run: pip install -r requirements.txt pyinstaller
       - name: EXE bauen
-        run: pyinstaller --onefile --name PCMonitorServer --hidden-import pynvml pc_monitor_server.py
+        run: |
+          python make_icon.py
+          pyinstaller --onefile --noconsole --name PCMonitorServer --icon icon.ico `
+            --hidden-import pynvml --hidden-import pystray._win32 pc_monitor_server.py
+      - name: EXE testen (startet im Tray, liefert Werte)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist\PCMonitorServer.exe -ArgumentList "--tray" -PassThru
+          $ok = $false
+          for ($i = 0; $i -lt 30; $i++) {
+            Start-Sleep -Seconds 2
+            if ($p.HasExited) { throw "EXE hat sich beendet (Exitcode $($p.ExitCode))" }
+            try {
+              $r = Invoke-RestMethod http://127.0.0.1:47811/stats -TimeoutSec 3
+              Write-Host "CPU $($r.cpu.usage) %  RAM $($r.ram.usage) %  GPU-Quelle $($r.gpu_source)"
+              $ok = $true; break
+            } catch { }
+          }
+          Stop-Process -Id $p.Id -Force
+          if (-not $ok) { throw "Server hat nicht geantwortet" }
       - uses: actions/upload-artifact@v4
         with:
           name: PCMonitorServer-exe

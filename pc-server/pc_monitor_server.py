@@ -8,6 +8,7 @@ damit die Android-App "PC Monitor" sie anzeigen kann.
   UDP   Port 47810                       -> automatische Suche der App
 
 Start:  python pc_monitor_server.py   (oder die fertige PCMonitorServer.exe)
+        Optionen: --tray (versteckt im Systemtray starten), --console (ohne Fenster)
 """
 
 import json
@@ -51,7 +52,7 @@ def cpu_name():
                         return line.split(":", 1)[1].strip()
         if sys.platform == "darwin":
             return subprocess.check_output(
-                ["sysctl", "-n", "machdep.cpu.brand_string"], text=True).strip()
+                ["sysctl", "-n", "machdep.cpu.brand_string"], text=True, stdin=subprocess.DEVNULL).strip()
     except Exception:
         pass
     return platform.processor() or "CPU"
@@ -145,7 +146,8 @@ class GpuReader:
                 ["nvidia-smi",
                  "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw",
                  "--format=csv,noheader,nounits"],
-                text=True, timeout=5, creationflags=NO_WINDOW)
+                text=True, timeout=5, creationflags=NO_WINDOW,
+                stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception:
             return None
 
@@ -195,7 +197,7 @@ while ($true) {
             self._win_proc = subprocess.Popen(
                 ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
                  "-Command", self._PS_SCRIPT],
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
                 creationflags=NO_WINDOW)
         except Exception:
             return False
@@ -369,14 +371,19 @@ def local_ips():
     return sorted(ips)
 
 
-def main():
+def start_backend():
+    """Startet Messung, UDP-Suche und HTTP-Server im Hintergrund."""
     global sampler
     sampler = Sampler()
     sampler.sample()
     sampler.start()
     threading.Thread(target=discovery_responder, daemon=True).start()
-
     server = ThreadingHTTPServer(("0.0.0.0", HTTP_PORT), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return sampler
+
+
+def run_console():
     print("=" * 56)
     print(" PC Monitor Server läuft")
     print(" CPU:", sampler.cpu_name)
@@ -387,9 +394,38 @@ def main():
     print(" Beenden mit Strg+C")
     print("=" * 56)
     try:
-        server.serve_forever()
+        while True:
+            time.sleep(3600)
     except KeyboardInterrupt:
         pass
+
+
+def main():
+    args = sys.argv[1:]
+    # Fenster mit Tray-Icon unter Windows (oder mit --gui), sonst Konsole.
+    want_gui = "--console" not in args and (IS_WINDOWS or "--gui" in args)
+    gui = None
+    if want_gui:
+        try:
+            import tray_gui as gui
+        except Exception as e:
+            print("Fenster/Tray nicht verfügbar, nutze Konsole:", e)
+            gui = None
+
+    try:
+        start_backend()
+    except OSError as e:
+        msg = (f"Port {HTTP_PORT} ist belegt - läuft der Server schon?\n\n{e}")
+        if gui:
+            gui.show_error(msg)
+        else:
+            print(msg)
+        sys.exit(1)
+
+    if gui:
+        gui.run(sampler, local_ips(), HTTP_PORT, start_hidden="--tray" in args)
+    else:
+        run_console()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,137 @@
+"""Fenster + Systemtray für den PC Monitor Server (Windows).
+
+Minimieren -> Fenster verschwindet, Icon bleibt im Systemtray.
+Doppelklick aufs Tray-Icon oder "Anzeigen" holt das Fenster zurück.
+"""
+
+import threading
+import tkinter as tk
+from tkinter import messagebox
+
+import pystray
+from PIL import Image, ImageDraw
+
+BG = "#0E1116"
+CARD = "#171B22"
+TEXT = "#E8ECF2"
+MUTED = "#8A94A6"
+CPU = "#3FA9F5"
+GPU = "#7BD85A"
+
+
+def make_icon(size=64):
+    """Kleiner Monitor mit drei Balken (wie das App-Icon)."""
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    s = size / 64
+    d.rounded_rectangle([2 * s, 6 * s, 62 * s, 48 * s], radius=6 * s, fill=TEXT)
+    d.rectangle([7 * s, 11 * s, 57 * s, 43 * s], fill=BG)
+    d.rectangle([26 * s, 48 * s, 38 * s, 55 * s], fill=TEXT)
+    d.rectangle([16 * s, 55 * s, 48 * s, 60 * s], fill=TEXT)
+    d.rectangle([13 * s, 28 * s, 22 * s, 40 * s], fill=CPU)
+    d.rectangle([27 * s, 17 * s, 36 * s, 40 * s], fill=GPU)
+    d.rectangle([41 * s, 23 * s, 50 * s, 40 * s], fill="#F5A623")
+    return img
+
+
+def show_error(msg):
+    root = tk.Tk()
+    root.withdraw()
+    messagebox.showerror("PC Monitor Server", msg)
+    root.destroy()
+
+
+def _pct(v):
+    return "–" if v is None else f"{round(v)} %"
+
+
+def run(sampler, ips, port, start_hidden=False):
+    root = tk.Tk()
+    root.title("PC Monitor Server")
+    root.configure(bg=BG)
+    root.resizable(False, False)
+    icon_img = make_icon(64)
+    try:
+        from PIL import ImageTk
+        root.iconphoto(True, ImageTk.PhotoImage(icon_img))
+    except Exception:
+        pass
+
+    pad = {"padx": 16}
+    tk.Label(root, text="PC Monitor Server läuft", bg=BG, fg=TEXT,
+             font=("Segoe UI", 14, "bold")).pack(anchor="w", pady=(14, 2), **pad)
+    tk.Label(root, text="In der App 'Suchen' tippen oder diese Adresse eintragen:",
+             bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", **pad)
+    for ip in ips or ["(keine Netzwerkadresse gefunden)"]:
+        tk.Label(root, text=f"{ip}:{port}" if ips else ip, bg=BG, fg=TEXT,
+                 font=("Consolas", 12)).pack(anchor="w", **pad)
+
+    card = tk.Frame(root, bg=CARD)
+    card.pack(fill="x", pady=12, **pad)
+    cpu_var = tk.StringVar(value="CPU –")
+    gpu_var = tk.StringVar(value="GPU –")
+    tk.Label(card, textvariable=cpu_var, bg=CARD, fg=CPU,
+             font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=12, pady=(10, 0))
+    tk.Label(card, text=sampler.cpu_name, bg=CARD, fg=MUTED,
+             font=("Segoe UI", 8)).pack(anchor="w", padx=12)
+    tk.Label(card, textvariable=gpu_var, bg=CARD, fg=GPU,
+             font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=12, pady=(8, 0))
+    tk.Label(card, text="GPU-Quelle: " + (sampler.gpu.source or "keine GPU-Daten gefunden"),
+             bg=CARD, fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", padx=12, pady=(0, 10))
+
+    tk.Label(root, text="Minimieren legt das Fenster in den Systemtray.",
+             bg=BG, fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 12), **pad)
+
+    # ---------------------------------------------------------------- Tray
+    def show_window(icon=None, item=None):
+        root.after(0, _show)
+
+    def _show():
+        root.deiconify()
+        root.state("normal")
+        root.lift()
+        root.focus_force()
+
+    def quit_app(icon=None, item=None):
+        root.after(0, _quit)
+
+    def _quit():
+        tray.stop()
+        root.destroy()
+
+    tray = pystray.Icon(
+        "pcmonitor", icon_img, "PC Monitor Server",
+        menu=pystray.Menu(
+            pystray.MenuItem("Anzeigen", show_window, default=True),
+            pystray.MenuItem("Beenden", quit_app),
+        ),
+    )
+    threading.Thread(target=tray.run, daemon=True).start()
+
+    def on_unmap(event):
+        # Minimiert -> ganz ausblenden, nur das Tray-Icon bleibt.
+        if event.widget is root and root.state() == "iconic":
+            root.withdraw()
+
+    root.bind("<Unmap>", on_unmap)
+    root.protocol("WM_DELETE_WINDOW", _quit)
+
+    # ------------------------------------------------------- Live-Werte
+    def refresh():
+        d = sampler.snapshot()
+        if d:
+            cpu = d["cpu"]["usage"]
+            gpus = d.get("gpus") or []
+            gpu = gpus[0]["usage"] if gpus else None
+            cpu_var.set(f"CPU  {_pct(cpu)}")
+            gpu_var.set(f"GPU  {_pct(gpu)}")
+            try:
+                tray.title = f"PC Monitor – CPU {_pct(cpu)} · GPU {_pct(gpu)}"
+            except Exception:
+                pass
+        root.after(1000, refresh)
+
+    refresh()
+    if start_hidden:
+        root.withdraw()
+    root.mainloop()

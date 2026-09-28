@@ -19,8 +19,13 @@ Funktioniert nur im eigenen Netzwerk (WLAN/LAN), kein Fernzugriff, kein Konto.
 3. App öffnen → sie sucht den PC automatisch. Klappt das nicht: oben auf den Titel tippen
    und die IP aus dem Server-Fenster eintragen.
 
+Der Server hat ein kleines Fenster mit IP-Adresse und Live-Werten. **Minimieren legt ihn in den
+Systemtray** (Icon unten rechts neben der Uhr, Tooltip zeigt CPU/GPU). Doppelklick aufs Icon holt das
+Fenster zurück, Rechtsklick → „Beenden“ schließt ihn.
+
 Tipp: Damit der Server immer läuft, eine Verknüpfung zur EXE in den Autostart-Ordner legen
-(`Win+R` → `shell:startup`).
+(`Win+R` → `shell:startup`) und in den Eigenschaften der Verknüpfung
+hinter das Ziel ` --tray` schreiben – dann startet er direkt unsichtbar im Tray.
 
 ## App-Funktionen
 
