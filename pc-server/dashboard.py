@@ -66,7 +66,7 @@ DASHBOARD_HTML = r"""<!doctype html>
         <text class="val" x="50" y="56">–</text><text class="lbl" x="50" y="84">GPU</text></svg>
       <div class="name">–</div><div class="info"></div>
     </div>
-    <div class="card graph"><div class="t">Verlauf (2 Minuten)</div><canvas id="graph"></canvas></div>
+    <div class="card graph"><div class="t">Verlauf (5 Minuten)</div><canvas id="graph"></canvas></div>
     <div class="card bars">
       <div class="row"><span id="ramT">RAM –</span><div class="bar"><div id="ramB" style="background:var(--ram)"></div></div></div>
       <div class="row"><span id="vramT">VRAM –</span><div class="bar"><div id="vramB" style="background:var(--gpu)"></div></div></div>
@@ -76,7 +76,7 @@ DASHBOARD_HTML = r"""<!doctype html>
 <script>
 (function () {
   if (/[?&]cast=1/.test(location.search)) document.body.className = "cast";
-  var CAP = 120, hist = { cpu: [], gpu: [] }, fails = 0;
+  var CAP = 300, hist = { cpu: [], gpu: [] }, fails = 0;
   function $(id) { return document.getElementById(id); }
   function pct(v) { return v == null ? "–" : Math.round(v) + " %"; }
   function gb(mb) { return mb == null ? "–" : (mb / 1024).toFixed(1).replace(".", ",") + " GB"; }
@@ -131,6 +131,7 @@ DASHBOARD_HTML = r"""<!doctype html>
     if (cpu.temp_c != null) ci.push(Math.round(cpu.temp_c) + " °C");
     setGauge("cpu", cpu.usage, cpu.name, ci.join("  ·  "));
     var gi = [];
+    if (gpu && gpu.clock_mhz != null) gi.push(Math.round(gpu.clock_mhz) + " MHz");
     if (gpu && gpu.temp_c != null) gi.push(Math.round(gpu.temp_c) + " °C");
     if (gpu && gpu.power_w != null) gi.push(Math.round(gpu.power_w) + " W");
     setGauge("gpu", gpu ? gpu.usage : null, gpu ? gpu.name : "Keine GPU-Daten", gi.join("  ·  "));

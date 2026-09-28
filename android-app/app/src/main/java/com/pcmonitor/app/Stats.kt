@@ -11,6 +11,7 @@ data class GpuStats(
     val memTotalMb: Double?,
     val tempC: Double?,
     val powerW: Double?,
+    val clockMhz: Double?,
 )
 
 data class PcStats(
@@ -19,6 +20,10 @@ data class PcStats(
     val cpuUsage: Double,
     val cpuFreqMhz: Double?,
     val cpuTempC: Double?,
+    /** Auslastung je (logischem) Kern in %. */
+    val coreUsage: List<Double>,
+    /** Aktueller Takt je Kern in MHz, gleiche Reihenfolge wie [coreUsage]; leer = unbekannt. */
+    val coreFreqMhz: List<Double?>,
     val ramUsedMb: Double,
     val ramTotalMb: Double,
     val ramUsage: Double,
@@ -69,9 +74,14 @@ object StatsClient {
                         memTotalMb = g.num("mem_total_mb"),
                         tempC = g.num("temp_c"),
                         powerW = g.num("power_w"),
+                        clockMhz = g.num("clock_mhz"),
                     )
                 )
             }
+        }
+        fun numList(key: String): List<Double?> {
+            val arr = cpu.optJSONArray(key) ?: return emptyList()
+            return List(arr.length()) { i -> if (arr.isNull(i)) null else arr.optDouble(i).takeIf { !it.isNaN() } }
         }
         return PcStats(
             host = j.optString("host", "PC"),
@@ -79,6 +89,8 @@ object StatsClient {
             cpuUsage = cpu.num("usage") ?: 0.0,
             cpuFreqMhz = cpu.num("freq_mhz"),
             cpuTempC = cpu.num("temp_c"),
+            coreUsage = numList("cores").map { it ?: 0.0 },
+            coreFreqMhz = numList("core_freq_mhz"),
             ramUsedMb = ram.num("used_mb") ?: 0.0,
             ramTotalMb = ram.num("total_mb") ?: 0.0,
             ramUsage = ram.num("usage") ?: 0.0,

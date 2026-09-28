@@ -67,6 +67,8 @@ jobs:
           try {
             if (-not $r) { throw "Server hat nicht geantwortet" }
             Write-Host "CPU $($r.cpu.usage) %  RAM $($r.ram.usage) %  GPU-Quelle $($r.gpu_source)"
+            Write-Host "Kerntakte: $($r.cpu.core_freq_mhz -join ', ') MHz  CPU-Temp: $($r.cpu.temp_c)"
+            if (-not $r.cpu.core_freq_mhz -or $r.cpu.core_freq_mhz.Count -ne $r.cpu.cores.Count) { throw "Takt je CPU-Kern fehlt" }
             $html = Invoke-WebRequest http://127.0.0.1:47811/ -UseBasicParsing -TimeoutSec 5
             if ($html.Content -notmatch "PC Monitor") { throw "Dashboard fehlt" }
             $c = Invoke-RestMethod "http://127.0.0.1:47811/cast?scan=1" -TimeoutSec 30

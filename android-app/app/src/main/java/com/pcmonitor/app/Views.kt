@@ -74,10 +74,10 @@ class GaugeView @JvmOverloads constructor(
         canvas.drawArc(rect, 135f, 270f, false, trackPaint)
         if (hasValue && shown > 0.3f) canvas.drawArc(rect, 135f, 270f * shown / 100f, false, arcPaint)
 
-        valuePaint.textSize = size * 0.24f
+        valuePaint.textSize = size * 0.26f
         val text = if (hasValue) "${Math.round(shown)}%" else "–"
         canvas.drawText(text, cx, cy + valuePaint.textSize * 0.35f, valuePaint)
-        labelPaint.textSize = size * 0.11f
+        labelPaint.textSize = size * 0.13f
         canvas.drawText(label, cx, cy + r * 0.78f, labelPaint)
     }
 }
@@ -87,14 +87,14 @@ class GraphView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null,
 ) : View(context, attrs) {
 
-    private val capacity = 120
+    private val capacity = 300 // 5 Minuten bei einem Wert pro Sekunde
     private val series = mutableListOf<Pair<Int, ArrayDeque<Float>>>()
 
     private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = context.getColor(R.color.track); strokeWidth = dp(1f)
     }
     private val gridText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = context.getColor(R.color.muted); textSize = dp(9f)
+        color = context.getColor(R.color.muted); textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 11f, resources.displayMetrics)
     }
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE; strokeWidth = dp(2f); strokeJoin = Paint.Join.ROUND
@@ -172,6 +172,86 @@ class BarView @JvmOverloads constructor(
         if (value > 0f) {
             rect.set(0f, 0f, width * value / 100f, height.toFloat())
             canvas.drawRoundRect(rect, r, r, fg)
+        }
+    }
+}
+
+/** Raster mit einer Zelle je CPU-Kern: Nummer, aktueller Takt und Auslastungsbalken. */
+class CoreGridView @JvmOverloads constructor(
+    context: Context, attrs: AttributeSet? = null,
+) : View(context, attrs) {
+
+    var color: Int = Color.WHITE
+        set(v) { field = v; barPaint.color = v; invalidate() }
+
+    private var usage: List<Double> = emptyList()
+    private var freqMhz: List<Double?> = emptyList()
+
+    private val minCellWidth = dp(66f)
+    private val rowHeight = dp(30f)
+    private val gap = dp(8f)
+    private val barHeight = dp(4f)
+
+    private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = context.getColor(R.color.muted); textSize = sp(13f)
+    }
+    private val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = context.getColor(R.color.text); textSize = sp(14f); textAlign = Paint.Align.RIGHT
+        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+    }
+    private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.track) }
+    private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val rect = RectF()
+
+    private fun sp(v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, v, resources.displayMetrics)
+
+    /** Zeigt den Takt, wenn bekannt – sonst die Auslastung je Kern. */
+    val showsFrequency get() = freqMhz.any { it != null }
+
+    fun setCores(usage: List<Double>, freqMhz: List<Double?>) {
+        val oldCount = count
+        this.usage = usage
+        this.freqMhz = freqMhz
+        if (count != oldCount) requestLayout()
+        invalidate()
+    }
+
+    private val count get() = maxOf(usage.size, freqMhz.size)
+
+    private fun columns(width: Int): Int {
+        val w = width - paddingLeft - paddingRight
+        return ((w + gap) / (minCellWidth + gap)).toInt().coerceIn(1, maxOf(1, count))
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val w = MeasureSpec.getSize(widthMeasureSpec)
+        val rows = if (count == 0) 0 else (count + columns(w) - 1) / columns(w)
+        val h = (rows * rowHeight + paddingTop + paddingBottom).toInt()
+        setMeasuredDimension(w, resolveSize(h, heightMeasureSpec))
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val n = count
+        if (n == 0) return
+        val cols = columns(width)
+        val cellW = (width - paddingLeft - paddingRight - gap * (cols - 1)) / cols
+        val freq = showsFrequency
+        for (i in 0 until n) {
+            val x = paddingLeft + (i % cols) * (cellW + gap)
+            val y = paddingTop + (i / cols) * rowHeight
+            val base = y + rowHeight - barHeight - dp(6f)
+            canvas.drawText("${i + 1}", x, base - dp(3f), labelPaint)
+            val u = usage.getOrNull(i)
+            val value = if (freq) freqMhz.getOrNull(i)?.let { String.format(java.util.Locale.GERMANY, "%.2f", it / 1000.0) } ?: "–"
+            else u?.let { "${Math.round(it)}%" } ?: "–"
+            canvas.drawText(value, x + cellW, base - dp(3f), valuePaint)
+            rect.set(x, base, x + cellW, base + barHeight)
+            canvas.drawRoundRect(rect, barHeight / 2, barHeight / 2, trackPaint)
+            val p = (u ?: 0.0).toFloat().coerceIn(0f, 100f)
+            if (p > 0f) {
+                rect.right = x + cellW * p / 100f
+                canvas.drawRoundRect(rect, barHeight / 2, barHeight / 2, barPaint)
+            }
         }
     }
 }

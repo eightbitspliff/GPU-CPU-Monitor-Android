@@ -29,6 +29,8 @@ class MainActivity : Activity() {
     private lateinit var gpuName: TextView
     private lateinit var gpuInfo: TextView
     private lateinit var graph: GraphView
+    private lateinit var coresTitle: TextView
+    private lateinit var coreGrid: CoreGridView
     private lateinit var ramText: TextView
     private lateinit var ramBar: BarView
     private lateinit var vramText: TextView
@@ -57,6 +59,8 @@ class MainActivity : Activity() {
         gpuName = findViewById(R.id.gpuName)
         gpuInfo = findViewById(R.id.gpuInfo)
         graph = findViewById(R.id.graph)
+        coresTitle = findViewById(R.id.coresTitle)
+        coreGrid = findViewById(R.id.coreGrid)
         ramText = findViewById(R.id.ramText)
         ramBar = findViewById(R.id.ramBar)
         vramText = findViewById(R.id.vramText)
@@ -69,6 +73,7 @@ class MainActivity : Activity() {
         gpuGauge.label = "GPU"; gpuGauge.color = gpuColor
         ramBar.color = getColor(R.color.ram)
         vramBar.color = gpuColor
+        coreGrid.color = cpuColor
         cpuSeries = graph.addSeries(cpuColor)
         gpuSeries = graph.addSeries(gpuColor)
 
@@ -146,13 +151,21 @@ class MainActivity : Activity() {
             cpuName.text = s.cpuName
             cpuInfo.text = listOfNotNull(
                 s.cpuFreqMhz?.let { String.format(Locale.GERMANY, "%.2f GHz", it / 1000.0) },
-                s.cpuTempC?.let { "${Math.round(it)} °C" },
+                s.cpuTempC?.let { "${Math.round(it)} °C" } ?: "– °C",
             ).joinToString("  ·  ")
+
+            coreGrid.setCores(s.coreUsage, s.coreFreqMhz)
+            val n = maxOf(s.coreUsage.size, s.coreFreqMhz.size)
+            coresTitle.text = buildString {
+                append(if (n > 0) "CPU-Kerne ($n)" else "CPU-Kerne")
+                append(if (coreGrid.showsFrequency) "  ·  Takt in GHz" else "  ·  Auslastung")
+            }
 
             val g = s.gpu
             gpuGauge.setValue(g?.usage)
             gpuName.text = g?.name ?: "Keine GPU-Daten"
             gpuInfo.text = if (g == null) "" else listOfNotNull(
+                g.clockMhz?.let { "${Math.round(it)} MHz" },
                 g.tempC?.let { "${Math.round(it)} °C" },
                 g.powerW?.let { "${Math.round(it)} W" },
             ).joinToString("  ·  ")

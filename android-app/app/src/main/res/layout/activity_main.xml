@@ -28,7 +28,7 @@
                 android:layout_height="wrap_content"
                 android:text="PC Monitor"
                 android:textColor="@color/text"
-                android:textSize="18sp"
+                android:textSize="21sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -37,7 +37,7 @@
                 android:layout_height="wrap_content"
                 android:text="Nicht verbunden"
                 android:textColor="@color/muted"
-                android:textSize="12sp" />
+                android:textSize="14sp" />
         </LinearLayout>
 
         <Button
@@ -45,7 +45,8 @@
             style="@android:style/Widget.Material.Button.Borderless.Colored"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Suchen" />
+            android:text="Suchen"
+            android:textSize="16sp" />
 
         <Button
             android:id="@+id/menuButton"
@@ -54,7 +55,7 @@
             android:layout_height="wrap_content"
             android:minWidth="48dp"
             android:text="⋮"
-            android:textSize="20sp" />
+            android:textSize="22sp" />
     </LinearLayout>
 
     <LinearLayout
@@ -98,7 +99,7 @@
                     android:maxLines="1"
                     android:text="–"
                     android:textColor="@color/muted"
-                    android:textSize="11sp" />
+                    android:textSize="13sp" />
 
                 <TextView
                     android:id="@+id/cpuInfo"
@@ -107,7 +108,7 @@
                     android:gravity="center"
                     android:text=""
                     android:textColor="@color/text"
-                    android:textSize="13sp" />
+                    android:textSize="15sp" />
             </LinearLayout>
 
             <LinearLayout
@@ -135,7 +136,7 @@
                     android:maxLines="1"
                     android:text="–"
                     android:textColor="@color/muted"
-                    android:textSize="11sp" />
+                    android:textSize="13sp" />
 
                 <TextView
                     android:id="@+id/gpuInfo"
@@ -144,7 +145,7 @@
                     android:gravity="center"
                     android:text=""
                     android:textColor="@color/text"
-                    android:textSize="13sp" />
+                    android:textSize="15sp" />
             </LinearLayout>
         </LinearLayout>
 
@@ -154,6 +155,30 @@
             android:layout_height="0dp"
             android:layout_weight="1"
             android:orientation="vertical">
+
+            <!-- CPU-Kerne -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/card_bg"
+                android:orientation="vertical"
+                android:padding="10dp">
+
+                <TextView
+                    android:id="@+id/coresTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="CPU-Kerne"
+                    android:textColor="@color/muted"
+                    android:textSize="14sp" />
+
+                <com.pcmonitor.app.CoreGridView
+                    android:id="@+id/coreGrid"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp" />
+            </LinearLayout>
 
             <!-- Verlauf -->
             <LinearLayout
@@ -168,9 +193,9 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Verlauf (2 Minuten)"
+                    android:text="Verlauf (5 Minuten)"
                     android:textColor="@color/muted"
-                    android:textSize="12sp" />
+                    android:textSize="14sp" />
 
                 <com.pcmonitor.app.GraphView
                     android:id="@+id/graph"
@@ -195,7 +220,7 @@
                     android:layout_height="wrap_content"
                     android:text="RAM –"
                     android:textColor="@color/text"
-                    android:textSize="13sp" />
+                    android:textSize="15sp" />
 
                 <com.pcmonitor.app.BarView
                     android:id="@+id/ramBar"
@@ -210,7 +235,7 @@
                     android:layout_marginTop="10dp"
                     android:text="VRAM –"
                     android:textColor="@color/text"
-                    android:textSize="13sp" />
+                    android:textSize="15sp" />
 
                 <com.pcmonitor.app.BarView
                     android:id="@+id/vramBar"

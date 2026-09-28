@@ -34,6 +34,8 @@ except ImportError:
     print("Das Paket 'psutil' fehlt. Installieren mit:  pip install psutil")
     sys.exit(1)
 
+from cpu_sensors import CpuSensors
+
 HTTP_PORT = int(os.environ.get("PCMON_PORT", "47811"))
 DISCOVERY_PORT = 47810
 DISCOVERY_REQUEST = b"PCMON_DISCOVER"
@@ -62,18 +64,6 @@ def cpu_name():
     except Exception:
         pass
     return platform.processor() or "CPU"
-
-
-def cpu_temperature():
-    try:
-        temps = psutil.sensors_temperatures()  # nur Linux/BSD
-    except Exception:
-        return None
-    for key in ("coretemp", "k10temp", "zenpower", "cpu_thermal", "acpitz"):
-        entries = temps.get(key)
-        if entries:
-            return round(max(e.current for e in entries), 1)
-    return None
 
 
 # --------------------------------------------------------------------------- GPU
@@ -118,7 +108,8 @@ class GpuReader:
         result = []
         for h in self._nvml_handles:
             gpu = {"name": None, "usage": None, "mem_used_mb": None,
-                   "mem_total_mb": None, "temp_c": None, "power_w": None}
+                   "mem_total_mb": None, "temp_c": None, "power_w": None,
+                   "clock_mhz": None}
             try:
                 name = n.nvmlDeviceGetName(h)
                 gpu["name"] = name.decode() if isinstance(name, bytes) else name
@@ -142,6 +133,10 @@ class GpuReader:
                 gpu["power_w"] = round(n.nvmlDeviceGetPowerUsage(h) / 1000.0, 1)
             except Exception:
                 pass
+            try:
+                gpu["clock_mhz"] = float(n.nvmlDeviceGetClockInfo(h, n.NVML_CLOCK_GRAPHICS))
+            except Exception:
+                pass
             result.append(gpu)
         return result
 
@@ -150,7 +145,7 @@ class GpuReader:
         try:
             out = subprocess.check_output(
                 ["nvidia-smi",
-                 "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw",
+                 "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,clocks.gr",
                  "--format=csv,noheader,nounits"],
                 text=True, timeout=5, creationflags=NO_WINDOW,
                 stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -169,7 +164,8 @@ class GpuReader:
             if len(p) < 6:
                 continue
             result.append({"name": p[0], "usage": num(p[1]), "mem_used_mb": num(p[2]),
-                           "mem_total_mb": num(p[3]), "temp_c": num(p[4]), "power_w": num(p[5])})
+                           "mem_total_mb": num(p[3]), "temp_c": num(p[4]), "power_w": num(p[5]),
+                           "clock_mhz": num(p[6]) if len(p) > 6 else None})
         return result or None
 
     # Windows: Leistungsindikatoren (funktioniert für jede GPU) ---------------
@@ -192,7 +188,14 @@ while ($true) {
   $mem = Get-CimInstance Win32_PerfFormattedData_GPUPerformanceCounters_GPUAdapterMemory
   $used = 0
   if ($mem) { $used = ($mem | Measure-Object -Property DedicatedUsage -Sum).Sum }
-  [Console]::Out.WriteLine("VAL:" + [math]::Min(100, $max) + ";" + $used)
+  # Takt gibt Windows selbst nicht her - nur über LibreHardwareMonitor/OpenHardwareMonitor
+  $clock = ""
+  foreach ($ns in 'root/LibreHardwareMonitor', 'root/OpenHardwareMonitor') {
+    $c = Get-CimInstance -Namespace $ns -ClassName Sensor -Filter "SensorType='Clock'" |
+         Where-Object { $_.Identifier -match 'gpu' -and $_.Name -match 'Core' } | Select-Object -First 1
+    if ($c) { $clock = [math]::Round([double]$c.Value); break }
+  }
+  [Console]::Out.WriteLine("VAL:" + [math]::Min(100, $max) + ";" + $used + ";" + $clock)
   [Console]::Out.Flush()
   Start-Sleep -Milliseconds 800
 }
@@ -208,7 +211,8 @@ while ($true) {
         except Exception:
             return False
         self._win_value = {"name": "GPU", "usage": None, "mem_used_mb": None,
-                           "mem_total_mb": None, "temp_c": None, "power_w": None}
+                           "mem_total_mb": None, "temp_c": None, "power_w": None,
+                   "clock_mhz": None}
         threading.Thread(target=self._pump_windows, daemon=True).start()
         return True
 
@@ -219,9 +223,10 @@ while ($true) {
                 self._win_value["name"] = line[5:] or "GPU"
             elif line.startswith("VAL:"):
                 try:
-                    usage, used = line[4:].split(";")
+                    usage, used, clock = (line[4:].split(";") + [""])[:3]
                     self._win_value["usage"] = round(float(usage.replace(",", ".")), 1)
                     self._win_value["mem_used_mb"] = round(float(used.replace(",", ".")) / 1048576)
+                    self._win_value["clock_mhz"] = float(clock) if clock.strip() else None
                 except ValueError:
                     pass
 
@@ -245,13 +250,21 @@ while ($true) {
                     return None
 
             gpu = {"name": card, "usage": None, "mem_used_mb": None,
-                   "mem_total_mb": None, "temp_c": None, "power_w": None}
+                   "mem_total_mb": None, "temp_c": None, "power_w": None,
+                   "clock_mhz": None}
             v = rd(busy)
             gpu["usage"] = float(v) if v else None
             v = rd(os.path.join(dev, "mem_info_vram_used"))
             gpu["mem_used_mb"] = round(int(v) / 1048576) if v else None
             v = rd(os.path.join(dev, "mem_info_vram_total"))
             gpu["mem_total_mb"] = round(int(v) / 1048576) if v else None
+            sclk = rd(os.path.join(dev, "pp_dpm_sclk"))  # aktive Stufe ist mit * markiert
+            for sl in (sclk or "").splitlines():
+                if sl.strip().endswith("*"):
+                    try:
+                        gpu["clock_mhz"] = float(sl.split(":")[1].strip().split("Mhz")[0].split("MHz")[0])
+                    except (IndexError, ValueError):
+                        pass
             hwmon = os.path.join(dev, "hwmon")
             if os.path.isdir(hwmon):
                 for h in os.listdir(hwmon):
@@ -282,6 +295,7 @@ class Sampler(threading.Thread):
         self.lock = threading.Lock()
         self.gpu = GpuReader()
         self.cpu_name = cpu_name()
+        self.cpu_sensors = CpuSensors()
         self.hostname = socket.gethostname()
         self.data = {}
         psutil.cpu_percent(percpu=True)  # erste Messung initialisieren
@@ -297,11 +311,7 @@ class Sampler(threading.Thread):
     def sample(self):
         cores = psutil.cpu_percent(percpu=True)
         total = round(sum(cores) / len(cores), 1) if cores else 0.0
-        try:
-            freq = psutil.cpu_freq()
-            freq_mhz = round(freq.current) if freq else None
-        except Exception:
-            freq_mhz = None
+        core_freqs, freq_mhz, temp_c = self.cpu_sensors.read()
         vm = psutil.virtual_memory()
         data = {
             "host": self.hostname,
@@ -310,8 +320,9 @@ class Sampler(threading.Thread):
                 "name": self.cpu_name,
                 "usage": total,
                 "cores": [round(c, 1) for c in cores],
+                "core_freq_mhz": core_freqs,
                 "freq_mhz": freq_mhz,
-                "temp_c": cpu_temperature(),
+                "temp_c": temp_c,
             },
             "ram": {
                 "used_mb": round(vm.used / 1048576),
