@@ -19,29 +19,31 @@ DASHBOARD_HTML = r"""<!doctype html>
   html,body { margin:0; height:100%; background:var(--bg); color:var(--text);
     font-family:"Google Sans",Roboto,"Segoe UI",Arial,sans-serif; overflow:hidden; }
   body.cast { cursor:none; }
-  .wrap { height:100%; display:flex; flex-direction:column; padding:2.2vh 2.2vw; gap:2vh; }
+  .wrap { height:100%; display:flex; flex-direction:column; padding:2vh 1.8vw; gap:1.8vh; }
   header { display:flex; align-items:baseline; gap:1.2vw; }
-  #host { font-size:3.6vh; font-weight:600; }
-  #status { font-size:2.2vh; color:var(--muted); }
+  #host { font-size:6vh; font-weight:600; }
+  #status { font-size:3.6vh; color:var(--muted); }
   #status.err { color:var(--err); }
-  .main { flex:1; min-height:0; display:grid; gap:2vh 1.6vw;
+  .main { flex:1; min-height:0; display:grid; gap:1.8vh 1.4vw;
     grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1.5fr); grid-template-rows: 1fr auto; }
-  .card { background:var(--card); border-radius:2vh; padding:1.8vh 1.4vw; min-height:0; min-width:0; }
+  .card { background:var(--card); border-radius:2vh; padding:1.6vh 1.2vw; min-height:0; min-width:0; }
   .gauge { grid-row:1 / 3; display:flex; flex-direction:column; align-items:center; justify-content:center; }
   .gauge svg { width:100%; flex:1; min-height:0; }
-  .gauge .name { color:var(--muted); font-size:1.9vh; white-space:nowrap; overflow:hidden;
+  .gauge .name { color:var(--muted); font-size:3.6vh; white-space:nowrap; overflow:hidden;
     text-overflow:ellipsis; max-width:100%; text-align:center; }
-  .gauge .info { font-size:2.4vh; margin-top:.6vh; min-height:3vh; text-align:center; }
+  .gauge .info { font-size:5vh; line-height:1.25; margin-top:.6vh; min-height:5.5vh; text-align:center;
+    display:flex; flex-wrap:wrap; justify-content:center; gap:0 1.2vw; }
+  .gauge .info span { white-space:nowrap; }
   .track { fill:none; stroke:var(--track); stroke-width:8; stroke-linecap:round; }
   .arc { fill:none; stroke-width:8; stroke-linecap:round; transition:stroke-dasharray .6s ease-out; }
-  .val { font-size:19px; font-weight:600; fill:var(--text); text-anchor:middle; }
-  .lbl { font-size:8.5px; fill:var(--muted); text-anchor:middle; letter-spacing:.5px; }
+  .val { font-size:22px; font-weight:600; fill:var(--text); text-anchor:middle; }
+  .lbl { font-size:11px; fill:var(--muted); text-anchor:middle; letter-spacing:.5px; }
   .graph { display:flex; flex-direction:column; }
-  .graph .t { color:var(--muted); font-size:1.9vh; margin-bottom:1vh; }
+  .graph .t { color:var(--muted); font-size:3.6vh; margin-bottom:1vh; }
   .graph canvas { flex:1; min-height:0; width:100%; }
-  .bars .row { font-size:2.2vh; }
+  .bars .row { font-size:4.2vh; }
   .bars .row + .row { margin-top:1.6vh; }
-  .bar { height:1.2vh; background:var(--track); border-radius:1vh; margin-top:.8vh; overflow:hidden; }
+  .bar { height:1.8vh; background:var(--track); border-radius:1vh; margin-top:.8vh; overflow:hidden; }
   .bar > div { height:100%; width:0; border-radius:1vh; transition:width .6s ease-out; }
   @media (max-aspect-ratio: 1/1) {
     .main { grid-template-columns:minmax(0,1fr) minmax(0,1fr); grid-template-rows: 1.3fr 1fr auto; }
@@ -86,7 +88,9 @@ DASHBOARD_HTML = r"""<!doctype html>
     el.querySelector(".arc").setAttribute("stroke-dasharray", val + " 100");
     el.querySelector(".val").textContent = v == null ? "–" : Math.round(v) + "%";
     el.querySelector(".name").textContent = name;
-    el.querySelector(".info").textContent = info;
+    var box = el.querySelector(".info");
+    box.textContent = "";
+    info.forEach(function (t) { var sp = document.createElement("span"); sp.textContent = t; box.appendChild(sp); });
   }
   function push(arr, v) { arr.push(v); while (arr.length > CAP) arr.shift(); }
 
@@ -98,11 +102,11 @@ DASHBOARD_HTML = r"""<!doctype html>
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, w, h);
     g.strokeStyle = "#262C36"; g.lineWidth = 1; g.fillStyle = "#8A94A6";
-    g.font = "11px sans-serif";
+    g.font = Math.round(Math.max(12, window.innerHeight * 0.03)) + "px sans-serif";
     [0, 25, 50, 75, 100].forEach(function (p) {
       var y = h - h * p / 100;
       g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
-      if (p > 0 && p < 100) g.fillText(p, 2, y - 3);
+      if (p > 0 && p < 100) g.fillText(p, 3, y - 4);
     });
     var step = w / (CAP - 1);
     [["cpu", "#3FA9F5"], ["gpu", "#7BD85A"]].forEach(function (s) {
@@ -130,12 +134,12 @@ DASHBOARD_HTML = r"""<!doctype html>
     if (cpu.freq_mhz != null) ci.push((cpu.freq_mhz / 1000).toFixed(2).replace(".", ",") + " GHz");
     if (cpu.temp_c != null) ci.push(Math.round(cpu.temp_c) + " °C");
     if (cpu.power_w != null) ci.push(Math.round(cpu.power_w) + " W");
-    setGauge("cpu", cpu.usage, cpu.name, ci.join("  ·  "));
+    setGauge("cpu", cpu.usage, cpu.name, ci);
     var gi = [];
     if (gpu && gpu.power_w != null) gi.push(Math.round(gpu.power_w) + " W");
     if (gpu && gpu.clock_mhz != null) gi.push(Math.round(gpu.clock_mhz) + " MHz");
     if (gpu && gpu.temp_c != null) gi.push(Math.round(gpu.temp_c) + " °C");
-    setGauge("gpu", gpu ? gpu.usage : null, gpu ? gpu.name : "Keine GPU-Daten", gi.join("  ·  "));
+    setGauge("gpu", gpu ? gpu.usage : null, gpu ? gpu.name : "Keine GPU-Daten", gi);
     $("ramT").textContent = "RAM  " + gb(ram.used_mb) + " / " + gb(ram.total_mb) + "  (" + pct(ram.usage) + ")";
     $("ramB").style.width = ram.usage + "%";
     if (gpu && gpu.mem_used_mb != null) {
@@ -151,7 +155,7 @@ DASHBOARD_HTML = r"""<!doctype html>
   function fail() {
     fails++;
     $("status").className = "err"; $("status").textContent = "Keine Verbindung zum PC";
-    if (fails >= 3) { setGauge("cpu", null, "–", ""); setGauge("gpu", null, "–", ""); }
+    if (fails >= 3) { setGauge("cpu", null, "–", []); setGauge("gpu", null, "–", []); }
     push(hist.cpu, null); push(hist.gpu, null); draw();
   }
 
