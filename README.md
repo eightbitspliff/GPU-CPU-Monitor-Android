@@ -64,7 +64,7 @@ Der Nest Hub lädt die Seite direkt vom PC; das Handy muss dafür nicht an sein.
 
 ## CPU-Temperatur unter Windows
 
-Windows gibt die CPU-Temperatur nur über einen Treiber heraus. Die `PCMonitorServer.exe`
+Windows gibt CPU-Temperatur und CPU-Leistungsaufnahme nur über einen Treiber heraus. Die `PCMonitorServer.exe`
 bringt dafür LibreHardwareMonitorLib und den Installer des signierten Open-Source-Treibers
 **PawnIO** mit (den nutzt auch LibreHardwareMonitor selbst):
 

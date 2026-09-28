@@ -129,11 +129,12 @@ DASHBOARD_HTML = r"""<!doctype html>
     var ci = [];
     if (cpu.freq_mhz != null) ci.push((cpu.freq_mhz / 1000).toFixed(2).replace(".", ",") + " GHz");
     if (cpu.temp_c != null) ci.push(Math.round(cpu.temp_c) + " °C");
+    if (cpu.power_w != null) ci.push(Math.round(cpu.power_w) + " W");
     setGauge("cpu", cpu.usage, cpu.name, ci.join("  ·  "));
     var gi = [];
+    if (gpu && gpu.power_w != null) gi.push(Math.round(gpu.power_w) + " W");
     if (gpu && gpu.clock_mhz != null) gi.push(Math.round(gpu.clock_mhz) + " MHz");
     if (gpu && gpu.temp_c != null) gi.push(Math.round(gpu.temp_c) + " °C");
-    if (gpu && gpu.power_w != null) gi.push(Math.round(gpu.power_w) + " W");
     setGauge("gpu", gpu ? gpu.usage : null, gpu ? gpu.name : "Keine GPU-Daten", gi.join("  ·  "));
     $("ramT").textContent = "RAM  " + gb(ram.used_mb) + " / " + gb(ram.total_mb) + "  (" + pct(ram.usage) + ")";
     $("ramB").style.width = ram.usage + "%";

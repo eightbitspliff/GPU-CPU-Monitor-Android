@@ -154,6 +154,7 @@ class MainActivity : Activity() {
             cpuInfo.text = listOfNotNull(
                 s.cpuFreqMhz?.let { String.format(Locale.GERMANY, "%.2f GHz", it / 1000.0) },
                 s.cpuTempC?.let { "${Math.round(it)} °C" } ?: "– °C",
+                s.cpuPowerW?.let { "${Math.round(it)} W" },
             ).joinToString("  ·  ")
 
             val note = if (s.cpuTempC == null) s.cpuTempNote else null

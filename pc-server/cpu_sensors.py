@@ -8,7 +8,9 @@ Windows: Leistungsindikatoren über pdh.dll (ctypes, ohne Zusatzpakete).
 Linux:   psutil.cpu_freq(percpu=True) und psutil.sensors_temperatures().
 """
 
+import glob
 import os
+import time
 
 import psutil
 
@@ -105,6 +107,7 @@ class CpuSensors:
     def __init__(self, lhm=None):
         self._pdh = None
         self._lhm = lhm
+        self._rapl_last = None  # (Zeit, Energie in µJ) für Linux
         if IS_WINDOWS:
             try:
                 self._pdh = _Pdh({
@@ -129,6 +132,31 @@ class CpuSensors:
             except Exception:
                 pass
         return cores, avg, self._temperature()
+
+    def power(self):
+        """Leistungsaufnahme des Prozessors in Watt (oder None)."""
+        p = self._lhm.cpu_power() if self._lhm is not None else None
+        if p is not None:
+            return round(p, 1)
+        return self._rapl_power()
+
+    def _rapl_power(self):
+        # Linux/Intel & AMD: Energiezähler der CPU-Packages (braucht meist Root-Rechte)
+        files = glob.glob("/sys/class/powercap/intel-rapl:[0-9]/energy_uj")
+        if not files:
+            return None
+        try:
+            energy = 0
+            for f in files:
+                with open(f) as fh:
+                    energy += int(fh.read())
+        except (OSError, ValueError):
+            return None
+        now = time.monotonic()
+        last, self._rapl_last = self._rapl_last, (now, energy)
+        if last is None or energy < last[1] or now <= last[0]:
+            return None
+        return round((energy - last[1]) / 1e6 / (now - last[0]), 1)
 
     def _core_freqs(self):
         if self._pdh is not None:

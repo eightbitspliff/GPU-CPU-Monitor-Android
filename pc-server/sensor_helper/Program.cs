@@ -10,7 +10,7 @@ using LibreHardwareMonitor.Hardware;
 using Microsoft.Win32;
 
 // Gibt jede Sekunde eine JSON-Zeile aus, z.B.
-// {"admin":true,"pawnio":true,"cpu_temp":54.5,"gpus":[{"name":"AMD Radeon RX 7800 XT","vendor":"amd",
+// {"admin":true,"pawnio":true,"cpu_temp":54.5,"cpu_power":88.2,"gpus":[{"name":"AMD Radeon RX 7800 XT","vendor":"amd",
 //  "power_w":212.3,"clock_mhz":2430,"temp_c":61,"usage":97}]}
 // Beendet sich, sobald der PC-Server die Pipe schließt.
 static class Program
@@ -63,6 +63,7 @@ static class Program
     static string Sample(Computer computer, bool admin, bool pawnIo)
     {
         double? cpuTemp = null;
+        double? cpuPower = null;
         var gpus = new List<string>();
         foreach (IHardware hw in computer.Hardware)
         {
@@ -72,6 +73,7 @@ static class Program
             {
                 case HardwareType.Cpu:
                     if (cpuTemp == null) cpuTemp = CpuTemperature(sensors);
+                    if (cpuPower == null) cpuPower = CpuPower(sensors);
                     break;
                 case HardwareType.GpuNvidia:
                 case HardwareType.GpuAmd:
@@ -90,6 +92,7 @@ static class Program
         return "{\"admin\":" + (admin ? "true" : "false") +
                ",\"pawnio\":" + (pawnIo ? "true" : "false") +
                ",\"cpu_temp\":" + Num(cpuTemp) +
+               ",\"cpu_power\":" + Num(cpuPower) +
                ",\"gpus\":[" + string.Join(",", gpus) + "]}";
     }
 
@@ -130,6 +133,19 @@ static class Program
             if (all.Count > 0) t = all.Max(s => s.Value.Value);
         }
         return t != null && t > 5 && t < 125 ? t : null;
+    }
+
+    /// Leistungsaufnahme des ganzen Prozessors (Package), sonst Summe der Kerne.
+    static double? CpuPower(List<ISensor> sensors)
+    {
+        double? p = Pick(sensors, SensorType.Power, "Package", "^CPU Total$", "Total");
+        if (p == null)
+        {
+            var cores = sensors.Where(s => s.SensorType == SensorType.Power && Valid(s) &&
+                                           Regex.IsMatch(s.Name, "Core", RegexOptions.IgnoreCase)).ToList();
+            if (cores.Count > 0) p = cores.Sum(s => s.Value.Value);
+        }
+        return p != null && p >= 0 && p < 1500 ? p : null;
     }
 
     /// Gesamtleistungsaufnahme der Grafikkarte (Board/Package), sonst größter Leistungswert.

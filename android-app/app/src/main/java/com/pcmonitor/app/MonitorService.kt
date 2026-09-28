@@ -66,6 +66,8 @@ class MonitorService : Service() {
                     "RAM ${fmtPct(s.ramUsage)}",
                     g?.tempC?.let { "GPU ${Math.round(it)} °C" },
                     s.cpuTempC?.let { "CPU ${Math.round(it)} °C" },
+                    s.cpuPowerW?.let { "CPU ${Math.round(it)} W" },
+                    g?.powerW?.let { "GPU ${Math.round(it)} W" },
                     s.host,
                 ).joinToString("  ·  ")
                 build(title, details)

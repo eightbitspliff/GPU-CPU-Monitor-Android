@@ -109,6 +109,9 @@ class LhmHelper:
     def cpu_temp(self):
         return self.data.get("cpu_temp")
 
+    def cpu_power(self):
+        return self.data.get("cpu_power")
+
     def gpus(self):
         return self.data.get("gpus") or []
 

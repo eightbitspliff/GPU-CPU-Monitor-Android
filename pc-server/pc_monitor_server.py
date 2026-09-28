@@ -325,6 +325,7 @@ class Sampler(threading.Thread):
                 "core_freq_mhz": core_freqs,
                 "freq_mhz": freq_mhz,
                 "temp_c": temp_c,
+                "power_w": self.cpu_sensors.power(),
                 "temp_note": self.lhm.cpu_temp_note() if temp_c is None else None,
             },
             "ram": {

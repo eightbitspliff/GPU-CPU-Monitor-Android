@@ -233,7 +233,9 @@ def run(sampler, caster, ips, port, start_hidden=False):
             gpu = gpus[0]["usage"] if gpus else None
             temp = d["cpu"].get("temp_c")
             g0 = gpus[0] if gpus else {}
-            cpu_var.set(f"CPU  {_pct(cpu)}" + (f"  ·  {round(temp)} °C" if temp is not None else ""))
+            cpu_w = d["cpu"].get("power_w")
+            cpu_var.set(f"CPU  {_pct(cpu)}" + (f"  ·  {round(temp)} °C" if temp is not None else "")
+                        + (f"  ·  {round(cpu_w)} W" if cpu_w is not None else ""))
             gpu_var.set(f"GPU  {_pct(gpu)}" + (f"  ·  {round(g0['power_w'])} W" if g0.get("power_w") is not None else ""))
             note = d["cpu"].get("temp_note")
             temp_var.set("CPU-Temperatur: " + (f"{round(temp)} °C" if temp is not None else (note or "–")))

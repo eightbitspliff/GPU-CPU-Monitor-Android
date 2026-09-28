@@ -97,7 +97,7 @@ jobs:
           try {
             if (-not $r) { throw "Server hat nicht geantwortet" }
             Write-Host "CPU $($r.cpu.usage) %  RAM $($r.ram.usage) %  GPU-Quelle $($r.gpu_source)"
-            Write-Host "Kerntakte: $($r.cpu.core_freq_mhz -join ', ') MHz  CPU-Temp: $($r.cpu.temp_c)"
+            Write-Host "Kerntakte: $($r.cpu.core_freq_mhz -join ', ') MHz  CPU-Temp: $($r.cpu.temp_c)  CPU-Leistung: $($r.cpu.power_w) W"
             Write-Host "Temp-Hinweis: $($r.cpu.temp_note)  GPUs: $($r.gpus | ConvertTo-Json -Compress)"
             if ($r.cpu.temp_note -eq "Sensor-Modul fehlt im PC-Server") { throw $r.cpu.temp_note }
             if (-not $r.cpu.core_freq_mhz -or $r.cpu.core_freq_mhz.Count -ne $r.cpu.cores.Count) { throw "Takt je CPU-Kern fehlt" }

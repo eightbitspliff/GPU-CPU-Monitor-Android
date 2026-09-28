@@ -20,6 +20,7 @@ data class PcStats(
     val cpuUsage: Double,
     val cpuFreqMhz: Double?,
     val cpuTempC: Double?,
+    val cpuPowerW: Double?,
     /** Hinweis vom Server, warum die CPU-Temperatur fehlt. */
     val cpuTempNote: String?,
     /** Auslastung je (logischem) Kern in %. */
@@ -91,6 +92,7 @@ object StatsClient {
             cpuUsage = cpu.num("usage") ?: 0.0,
             cpuFreqMhz = cpu.num("freq_mhz"),
             cpuTempC = cpu.num("temp_c"),
+            cpuPowerW = cpu.num("power_w"),
             cpuTempNote = if (cpu.isNull("temp_note")) null else cpu.optString("temp_note").ifBlank { null },
             coreUsage = numList("cores").map { it ?: 0.0 },
             coreFreqMhz = numList("core_freq_mhz"),
