@@ -158,16 +158,28 @@ def merge_gpus(gpus, lhm_gpus):
     if not gpus:
         return [{"name": g.get("name") or "GPU", "usage": g.get("usage"), "mem_used_mb": None,
                  "mem_total_mb": None, "temp_c": g.get("temp_c"), "power_w": g.get("power_w"),
-                 "clock_mhz": g.get("clock_mhz")} for g in _discrete_first(lhm_gpus)]
+                 "clock_mhz": g.get("clock_mhz"), "power_sources": g.get("powers")}
+                for g in _discrete_first(lhm_gpus)]
     remaining = _discrete_first(lhm_gpus)
     for gpu in gpus:
         match = _match(gpu.get("name") or "", remaining)
         if match is None:
             continue
         remaining.remove(match)
-        for key in ("power_w", "clock_mhz", "temp_c"):
+        for key in ("clock_mhz", "temp_c"):
             if gpu.get(key) is None and match.get(key) is not None:
                 gpu[key] = match[key]
+        # Leistung: alle Sensoren sammeln, der höchste ist die Gesamtaufnahme der Karte
+        sources = dict(gpu.get("power_sources") or {})
+        if gpu.get("power_w") is not None and not sources:
+            sources["Treiber"] = gpu["power_w"]
+        for name, v in (match.get("powers") or {}).items():
+            sources["LHM " + name] = v
+        if match.get("power_w") is not None and not match.get("powers"):
+            sources["LHM"] = match["power_w"]
+        if sources:
+            gpu["power_sources"] = sources
+            gpu["power_w"] = max(sources.values())
     return gpus
 
 

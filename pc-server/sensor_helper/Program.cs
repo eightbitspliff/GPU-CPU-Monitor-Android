@@ -82,6 +82,7 @@ static class Program
                         : hw.HardwareType == HardwareType.GpuAmd ? "amd" : "intel";
                     gpus.Add("{\"name\":" + Str(hw.Name) + ",\"vendor\":\"" + vendor + "\"" +
                              ",\"power_w\":" + Num(GpuPower(sensors)) +
+                             ",\"powers\":" + PowerList(sensors) +
                              ",\"clock_mhz\":" + Num(Pick(sensors, SensorType.Clock, "^GPU Core$", "Core", "Shader")) +
                              ",\"temp_c\":" + Num(Pick(sensors, SensorType.Temperature, "^GPU Core$", "Core", "Edge")) +
                              ",\"usage\":" + Num(Pick(sensors, SensorType.Load, "^GPU Core$", "^D3D 3D$", "Core")) +
@@ -148,16 +149,25 @@ static class Program
         return p != null && p >= 0 && p < 1500 ? p : null;
     }
 
-    /// Gesamtleistungsaufnahme der Grafikkarte (Board/Package), sonst größter Leistungswert.
+    static IEnumerable<ISensor> GpuPowerSensors(List<ISensor> sensors) =>
+        sensors.Where(s => s.SensorType == SensorType.Power && Valid(s) && s.Value.Value > 0 && s.Value.Value < 2000);
+
+    /// Gesamtleistungsaufnahme der Grafikkarte: alle Leistungssensoren (Chip, Speicher,
+    /// Board, ...) sind Teilwerte der Gesamtaufnahme, daher der größte Wert.
     static double? GpuPower(List<ISensor> sensors)
     {
-        double? p = Pick(sensors, SensorType.Power, "Board", "Total", "^GPU Package$", "Package", "^GPU Power$");
-        if (p == null)
-        {
-            var all = sensors.Where(s => s.SensorType == SensorType.Power && Valid(s)).ToList();
-            if (all.Count > 0) p = all.Max(s => s.Value.Value);
-        }
-        return p != null && p >= 0 && p < 2000 ? p : null;
+        var all = GpuPowerSensors(sensors).ToList();
+        return all.Count > 0 ? all.Max(s => (double)s.Value.Value) : (double?)null;
+    }
+
+    /// Alle Leistungssensoren als JSON-Objekt {"Name": Watt} (zur Kontrolle im Server-Fenster).
+    static string PowerList(List<ISensor> sensors)
+    {
+        var seen = new HashSet<string>();
+        var parts = new List<string>();
+        foreach (var s in GpuPowerSensors(sensors))
+            if (seen.Add(s.Name)) parts.Add(Str(s.Name) + ":" + Num(s.Value.Value));
+        return "{" + string.Join(",", parts) + "}";
     }
 
     static bool IsAdmin()

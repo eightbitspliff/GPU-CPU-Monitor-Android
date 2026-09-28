@@ -87,6 +87,10 @@ def run(sampler, caster, ips, port, start_hidden=False):
     tk.Label(card, text="GPU-Quelle: " + (sampler.gpu.source or "keine GPU-Daten gefunden"),
              bg=CARD, fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", padx=12)
 
+    gpu_power_var = tk.StringVar(value="")
+    tk.Label(card, textvariable=gpu_power_var, bg=CARD, fg=MUTED, font=("Segoe UI", 8),
+             wraplength=300, justify="left").pack(anchor="w", padx=12)
+
     # ------------------------------------------------ CPU-Temperatur (Treiber PawnIO)
     lhm = sampler.lhm
     temp_var = tk.StringVar(value="CPU-Temperatur: –")
@@ -237,6 +241,9 @@ def run(sampler, caster, ips, port, start_hidden=False):
             cpu_var.set(f"CPU  {_pct(cpu)}" + (f"  ·  {round(temp)} °C" if temp is not None else "")
                         + (f"  ·  {round(cpu_w)} W" if cpu_w is not None else ""))
             gpu_var.set(f"GPU  {_pct(gpu)}" + (f"  ·  {round(g0['power_w'])} W" if g0.get("power_w") is not None else ""))
+            src = g0.get("power_sources") or {}
+            gpu_power_var.set("GPU-Leistungssensoren: " + ", ".join(
+                f"{k} {round(v)} W" for k, v in sorted(src.items(), key=lambda kv: -kv[1])) if src else "")
             note = d["cpu"].get("temp_note")
             temp_var.set("CPU-Temperatur: " + (f"{round(temp)} °C" if temp is not None else (note or "–")))
             want = lhm.needs_pawnio() and lhm.admin

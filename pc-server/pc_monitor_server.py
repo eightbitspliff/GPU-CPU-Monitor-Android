@@ -78,6 +78,7 @@ class GpuReader:
         self.source = None
         self._nvml = None
         self._nvml_handles = []
+        self._nvml_energy = {}
         self._win_value = None
         self._win_proc = None
 
@@ -103,6 +104,33 @@ class GpuReader:
             return True
         except Exception:
             return False
+
+    def _nvml_power(self, h):
+        """Alle Leistungswerte, die NVML hergibt (Watt). Je nach Karte/Treiber meldet
+        die einfache Abfrage nur einen geglätteten oder Teilwert, daher mehrere Wege."""
+        n = self._nvml
+        out = {}
+        try:
+            out["NVML"] = round(n.nvmlDeviceGetPowerUsage(h) / 1000.0, 1)
+        except Exception:
+            pass
+        try:  # Momentanwert (neuere Treiber)
+            fv = n.nvmlDeviceGetFieldValues(h, [186])[0]  # NVML_FI_DEV_POWER_INSTANT
+            if fv.nvmlReturn == 0 and fv.value.uiVal:
+                out["NVML momentan"] = round(fv.value.uiVal / 1000.0, 1)
+        except Exception:
+            pass
+        try:  # Energiezähler der ganzen Karte (mJ) -> mittlere Leistung seit letzter Messung
+            energy = n.nvmlDeviceGetTotalEnergyConsumption(h)
+            now = time.monotonic()
+            key = id(h)  # Handles bleiben für die Laufzeit dieselben Objekte
+            last = self._nvml_energy.get(key)
+            self._nvml_energy[key] = (now, energy)
+            if last and energy >= last[1] and now - last[0] > 0.2:
+                out["NVML Energie"] = round((energy - last[1]) / 1000.0 / (now - last[0]), 1)
+        except Exception:
+            pass
+        return {k: v for k, v in out.items() if 0 < v < 2000}
 
     def _read_nvml(self):
         n = self._nvml
@@ -130,10 +158,10 @@ class GpuReader:
                 gpu["temp_c"] = float(n.nvmlDeviceGetTemperature(h, n.NVML_TEMPERATURE_GPU))
             except Exception:
                 pass
-            try:
-                gpu["power_w"] = round(n.nvmlDeviceGetPowerUsage(h) / 1000.0, 1)
-            except Exception:
-                pass
+            sources = self._nvml_power(h)
+            if sources:
+                gpu["power_w"] = max(sources.values())
+                gpu["power_sources"] = sources
             try:
                 gpu["clock_mhz"] = float(n.nvmlDeviceGetClockInfo(h, n.NVML_CLOCK_GRAPHICS))
             except Exception:
@@ -173,7 +201,9 @@ class GpuReader:
     # Die WMI-Klasse hat sprachunabhängige Namen (anders als Get-Counter).
     _PS_SCRIPT = r"""
 $ErrorActionPreference = 'SilentlyContinue'
-$name = (Get-CimInstance Win32_VideoController | Select-Object -First 1).Name
+$vc = Get-CimInstance Win32_VideoController
+$name = ($vc | Where-Object { $_.Name -match 'NVIDIA|Radeon|AMD|Arc' } | Select-Object -First 1).Name
+if (-not $name) { $name = ($vc | Select-Object -First 1).Name }
 [Console]::Out.WriteLine("NAME:" + $name)
 [Console]::Out.Flush()
 while ($true) {
