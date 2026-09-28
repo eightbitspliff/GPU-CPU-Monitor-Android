@@ -37,6 +37,23 @@ hinter das Ziel ` --tray` schreiben – dann startet er direkt unsichtbar im Tra
   läuft auch weiter, wenn die App geschlossen ist
 - Hoch- und Querformat
 
+## Anzeige auf dem Google Nest Hub (oder Chromecast)
+
+Der PC-Server kann die gleiche Ansicht wie die App direkt auf einen Nest Hub streamen:
+
+- **Am PC:** im Server-Fenster unter „Auf Nest Hub / Chromecast anzeigen“ das Gerät wählen → **Anzeigen**
+- **oder am Handy:** Menü ⋮ → **„Auf Nest Hub anzeigen…“** → Gerät antippen
+
+Der Server merkt sich das Gerät und startet die Anzeige automatisch wieder – nach einem
+Neustart des PCs, oder wenn der Hub sie nach einer Weile beendet. Nutzt jemand den Hub
+gerade für etwas anderes (Musik, Wetter, Timer …), wird das nicht unterbrochen; die Anzeige
+kommt zurück, sobald der Hub wieder frei ist. **Stoppen** beendet das dauerhaft.
+
+Das Dashboard gibt es auch im Browser: `http://<pc-ip>:47811/`
+
+Technik: Gestreamt wird über die Cast-App „DashCast“, die eine Webseite auf dem Gerät öffnet.
+Der Nest Hub lädt die Seite direkt vom PC; das Handy muss dafür nicht an sein.
+
 ## GPU-Unterstützung
 
 | GPU | Quelle | Werte |

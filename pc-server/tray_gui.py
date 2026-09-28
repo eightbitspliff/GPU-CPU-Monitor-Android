@@ -6,7 +6,7 @@ Doppelklick aufs Tray-Icon oder "Anzeigen" holt das Fenster zurück.
 
 import threading
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 
 import pystray
 from PIL import Image, ImageDraw
@@ -45,7 +45,7 @@ def _pct(v):
     return "–" if v is None else f"{round(v)} %"
 
 
-def run(sampler, ips, port, start_hidden=False):
+def run(sampler, caster, ips, port, start_hidden=False):
     root = tk.Tk()
     root.title("PC Monitor Server")
     root.configure(bg=BG)
@@ -78,6 +78,66 @@ def run(sampler, ips, port, start_hidden=False):
              font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=12, pady=(8, 0))
     tk.Label(card, text="GPU-Quelle: " + (sampler.gpu.source or "keine GPU-Daten gefunden"),
              bg=CARD, fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", padx=12, pady=(0, 10))
+
+    # ------------------------------------------------ Nest Hub / Chromecast
+    cast_card = tk.Frame(root, bg=CARD)
+    cast_card.pack(fill="x", pady=(0, 12), **pad)
+    tk.Label(cast_card, text="Auf Nest Hub / Chromecast anzeigen", bg=CARD, fg=TEXT,
+             font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=12, pady=(10, 4))
+    row = tk.Frame(cast_card, bg=CARD)
+    row.pack(fill="x", padx=12)
+    device_var = tk.StringVar(value=caster.target or "")
+    combo = ttk.Combobox(row, textvariable=device_var, width=26,
+                         values=[caster.target] if caster.target else [])
+    combo.pack(side="left")
+    search_btn = ttk.Button(row, text="Suchen")
+    search_btn.pack(side="left", padx=(6, 0))
+    row2 = tk.Frame(cast_card, bg=CARD)
+    row2.pack(fill="x", padx=12, pady=(6, 0))
+    start_btn = ttk.Button(row2, text="Anzeigen")
+    start_btn.pack(side="left")
+    stop_btn = ttk.Button(row2, text="Stoppen")
+    stop_btn.pack(side="left", padx=(6, 0))
+    cast_status = tk.StringVar(value=caster.status)
+    tk.Label(cast_card, textvariable=cast_status, bg=CARD, fg=MUTED, font=("Segoe UI", 8),
+             wraplength=300, justify="left").pack(anchor="w", padx=12, pady=(6, 10))
+
+    caster.listeners.append(lambda text: root.after(0, cast_status.set, text))
+
+    def do_search():
+        search_btn.configure(state="disabled", text="Suche…")
+
+        def work():
+            try:
+                names = [d["name"] for d in caster.discover()]
+            except Exception:
+                names = []
+
+            def done():
+                search_btn.configure(state="normal", text="Suchen")
+                combo.configure(values=names)
+                if names and device_var.get() not in names:
+                    device_var.set(names[0])
+                if not names:
+                    cast_status.set("Kein Gerät gefunden – gleiches WLAN? Firewall?")
+            root.after(0, done)
+        threading.Thread(target=work, daemon=True).start()
+
+    def do_start():
+        name = device_var.get().strip()
+        if name:
+            caster.start(name)
+        else:
+            cast_status.set("Erst 'Suchen' und ein Gerät wählen")
+
+    search_btn.configure(command=do_search)
+    start_btn.configure(command=do_start)
+    stop_btn.configure(command=caster.stop)
+    if not caster.state()["available"]:
+        for b in (search_btn, start_btn, stop_btn):
+            b.configure(state="disabled")
+    elif not caster.target:
+        do_search()
 
     tk.Label(root, text="Minimieren legt das Fenster in den Systemtray.",
              bg=BG, fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 12), **pad)

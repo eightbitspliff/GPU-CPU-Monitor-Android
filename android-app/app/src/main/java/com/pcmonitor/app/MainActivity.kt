@@ -261,15 +261,70 @@ class MainActivity : Activity() {
             isCheckable = true; isChecked = Prefs.keepScreenOn(this@MainActivity)
         }
         menu.menu.add(0, 3, 2, "IP-Adresse eingeben")
+        menu.menu.add(0, 4, 3, "Auf Nest Hub anzeigen…")
         menu.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 1 -> setNotify(!Prefs.notify(this))
                 2 -> { Prefs.setKeepScreenOn(this, !Prefs.keepScreenOn(this)); applyKeepScreenOn() }
                 3 -> askAddress()
+                4 -> showCastDialog()
             }
             true
         }
         menu.show()
+    }
+
+    /** Fragt den PC nach Cast-Geräten und lässt eins auswählen. */
+    private fun showCastDialog() {
+        val addr = Prefs.address(this) ?: run { askAddress(); return }
+        Toast.makeText(this, "Suche Nest Hub / Chromecast…", Toast.LENGTH_SHORT).show()
+        Thread {
+            val result = runCatching { CastClient.scan(addr) }
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                result.onFailure {
+                    AlertDialog.Builder(this).setTitle("Nicht möglich")
+                        .setMessage(it.message ?: "PC nicht erreichbar")
+                        .setPositiveButton("OK", null).show()
+                }.onSuccess { st ->
+                    if (!st.available) {
+                        AlertDialog.Builder(this).setTitle("Nicht verfügbar")
+                            .setMessage("Dem PC-Server fehlt die Cast-Unterstützung.")
+                            .setPositiveButton("OK", null).show()
+                        return@onSuccess
+                    }
+                    val names = st.devices.toMutableList()
+                    st.active?.let { if (it !in names) names.add(0, it) }
+                    val labels = names.map { if (it == st.active) "$it  ✓" else it }.toMutableList()
+                    if (st.active != null) labels.add("Anzeige beenden")
+                    if (labels.isEmpty()) {
+                        AlertDialog.Builder(this).setTitle("Kein Gerät gefunden")
+                            .setMessage("Nest Hub und PC müssen im selben Netzwerk sein. " +
+                                "Evtl. blockiert die Windows-Firewall die Suche (mDNS).")
+                            .setPositiveButton("OK", null).show()
+                        return@onSuccess
+                    }
+                    AlertDialog.Builder(this)
+                        .setTitle("Auf welchem Gerät anzeigen?")
+                        .setItems(labels.toTypedArray()) { _, i ->
+                            if (i < names.size) castAction { CastClient.start(addr, names[i]) }
+                            else castAction { CastClient.stop(addr) }
+                        }
+                        .setNegativeButton("Abbrechen", null)
+                        .show()
+                }
+            }
+        }.start()
+    }
+
+    private fun castAction(block: () -> CastClient.CastState) {
+        Thread {
+            val r = runCatching(block)
+            runOnUiThread {
+                val msg = r.fold({ it.status.ifBlank { "OK" } }, { "Fehler: ${it.message}" })
+                Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+            }
+        }.start()
     }
 
     private fun setNotify(on: Boolean) {

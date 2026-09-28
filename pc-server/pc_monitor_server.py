@@ -5,6 +5,8 @@ Liefert CPU-, RAM- und GPU-Auslastung dieses PCs als JSON im lokalen Netzwerk,
 damit die Android-App "PC Monitor" sie anzeigen kann.
 
   HTTP  GET http://<pc-ip>:47811/stats   -> aktuelle Werte als JSON
+  HTTP  GET http://<pc-ip>:47811/        -> Dashboard (Browser / Nest Hub)
+  HTTP  GET/POST /cast…                  -> Anzeige auf Nest Hub/Chromecast steuern
   UDP   Port 47810                       -> automatische Suche der App
 
 Start:  python pc_monitor_server.py   (oder die fertige PCMonitorServer.exe)
@@ -21,6 +23,10 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
+
+from caster import Caster
+from dashboard import DASHBOARD_HTML
 
 try:
     import psutil
@@ -326,18 +332,54 @@ class Sampler(threading.Thread):
 # --------------------------------------------------------------------------- Netzwerk
 
 sampler = None
+caster = None
 
 
 class Handler(BaseHTTPRequestHandler):
+    def _send(self, code, body, ctype):
+        if isinstance(body, str):
+            body = body.encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _json(self, obj, code=200):
+        self._send(code, json.dumps(obj, ensure_ascii=False), "application/json; charset=utf-8")
+
     def do_GET(self):
-        if self.path.split("?")[0] in ("/", "/stats"):
-            body = json.dumps(sampler.snapshot()).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(body)
+        url = urlparse(self.path)
+        if url.path == "/stats":
+            self._json(sampler.snapshot())
+        elif url.path in ("/", "/index.html"):
+            self._send(200, DASHBOARD_HTML, "text/html; charset=utf-8")
+        elif url.path == "/cast":
+            # Status; mit ?scan=1 zusätzlich Geräte im Netzwerk suchen
+            state = caster.state()
+            if parse_qs(url.query).get("scan") == ["1"]:
+                try:
+                    state["devices"] = caster.discover()
+                except Exception as e:
+                    state["devices"] = []
+                    state["error"] = str(e)
+            self._json(state)
+        else:
+            self.send_error(404)
+
+    def do_POST(self):
+        url = urlparse(self.path)
+        if url.path == "/cast/start":
+            name = (parse_qs(url.query).get("device") or [""])[0].strip()
+            if not name:
+                self._json({"error": "device fehlt"}, 400)
+                return
+            caster.start(name)
+            self._json(caster.state())
+        elif url.path == "/cast/stop":
+            caster.stop()
+            self._json(caster.state())
         else:
             self.send_error(404)
 
@@ -373,12 +415,13 @@ def local_ips():
 
 def start_backend():
     """Startet Messung, UDP-Suche und HTTP-Server im Hintergrund."""
-    global sampler
+    global sampler, caster
     sampler = Sampler()
     sampler.sample()
     sampler.start()
     threading.Thread(target=discovery_responder, daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", HTTP_PORT), Handler)
+    caster = Caster(HTTP_PORT)  # erst nach dem Port-Check, sonst castet ein zweiter Start mit
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return sampler
 
@@ -391,6 +434,9 @@ def run_console():
     print(" In der App diese Adresse eintragen (oder 'Suchen' tippen):")
     for ip in local_ips():
         print(f"   {ip}:{HTTP_PORT}")
+    print(" Dashboard im Browser: http://<diese-ip>:%d/" % HTTP_PORT)
+    if caster.target:
+        print(" Nest Hub / Chromecast:", caster.target)
     print(" Beenden mit Strg+C")
     print("=" * 56)
     try:
@@ -423,7 +469,7 @@ def main():
         sys.exit(1)
 
     if gui:
-        gui.run(sampler, local_ips(), HTTP_PORT, start_hidden="--tray" in args)
+        gui.run(sampler, caster, local_ips(), HTTP_PORT, start_hidden="--tray" in args)
     else:
         run_console()
 

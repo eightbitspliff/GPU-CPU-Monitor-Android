@@ -51,23 +51,29 @@ jobs:
         run: |
           python make_icon.py
           pyinstaller --onefile --noconsole --name PCMonitorServer --icon icon.ico `
-            --hidden-import pynvml --hidden-import pystray._win32 pc_monitor_server.py
+            --hidden-import pynvml --hidden-import pystray._win32 `
+            --collect-submodules pychromecast --collect-submodules zeroconf pc_monitor_server.py
       - name: EXE testen (startet im Tray, liefert Werte)
         shell: pwsh
         run: |
           $p = Start-Process -FilePath dist\PCMonitorServer.exe -ArgumentList "--tray" -PassThru
-          $ok = $false
-          for ($i = 0; $i -lt 30; $i++) {
+          $r = $null
+          for ($i = 0; $i -lt 30 -and -not $r; $i++) {
             Start-Sleep -Seconds 2
             if ($p.HasExited) { throw "EXE hat sich beendet (Exitcode $($p.ExitCode))" }
-            try {
-              $r = Invoke-RestMethod http://127.0.0.1:47811/stats -TimeoutSec 3
-              Write-Host "CPU $($r.cpu.usage) %  RAM $($r.ram.usage) %  GPU-Quelle $($r.gpu_source)"
-              $ok = $true; break
-            } catch { }
+            try { $r = Invoke-RestMethod http://127.0.0.1:47811/stats -TimeoutSec 3 } catch { }
           }
-          Stop-Process -Id $p.Id -Force
-          if (-not $ok) { throw "Server hat nicht geantwortet" }
+          try {
+            if (-not $r) { throw "Server hat nicht geantwortet" }
+            Write-Host "CPU $($r.cpu.usage) %  RAM $($r.ram.usage) %  GPU-Quelle $($r.gpu_source)"
+            $html = Invoke-WebRequest http://127.0.0.1:47811/ -UseBasicParsing -TimeoutSec 5
+            if ($html.Content -notmatch "PC Monitor") { throw "Dashboard fehlt" }
+            $c = Invoke-RestMethod "http://127.0.0.1:47811/cast?scan=1" -TimeoutSec 30
+            Write-Host "Cast verfügbar: $($c.available)  Geräte: $($c.devices.Count)  $($c.error)"
+            if (-not $c.available) { throw "Cast-Unterstützung fehlt in der EXE" }
+          } finally {
+            Stop-Process -Id $p.Id -Force
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: PCMonitorServer-exe

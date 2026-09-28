@@ -142,3 +142,46 @@ object Prefs {
 fun fmtPct(v: Double?) = if (v == null) "–" else "${Math.round(v)} %"
 
 fun fmtGb(mb: Double?) = if (mb == null) "–" else String.format(java.util.Locale.GERMANY, "%.1f GB", mb / 1024.0)
+
+/** Steuert über den PC-Server die Anzeige auf Nest Hub / Chromecast. */
+object CastClient {
+    data class CastState(val available: Boolean, val active: String?, val status: String, val devices: List<String>)
+
+    private fun base(address: String) = StatsClient.urlFor(address).removeSuffix("/stats")
+
+    private fun request(url: String, method: String): JSONObject {
+        val conn = URL(url).openConnection() as HttpURLConnection
+        conn.requestMethod = method
+        conn.connectTimeout = 3000
+        conn.readTimeout = 15000 // Gerätesuche dauert ein paar Sekunden
+        try {
+            if (method == "POST") {
+                conn.doOutput = true
+                conn.outputStream.use { }
+            }
+            if (conn.responseCode == 404) error("PC-Server ist zu alt – bitte neue PCMonitorServer.exe verwenden")
+            if (conn.responseCode != 200) error("HTTP ${conn.responseCode}")
+            return JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun parse(j: JSONObject): CastState {
+        val arr = j.optJSONArray("devices")
+        val devices = buildList { if (arr != null) for (i in 0 until arr.length()) add(arr.getJSONObject(i).optString("name")) }
+        return CastState(
+            available = j.optBoolean("available", false),
+            active = if (j.isNull("active")) null else j.optString("active"),
+            status = j.optString("status", ""),
+            devices = devices,
+        )
+    }
+
+    fun scan(address: String) = parse(request("${base(address)}/cast?scan=1", "GET"))
+
+    fun start(address: String, device: String) =
+        parse(request("${base(address)}/cast/start?device=" + java.net.URLEncoder.encode(device, "UTF-8"), "POST"))
+
+    fun stop(address: String) = parse(request("${base(address)}/cast/stop", "POST"))
+}
