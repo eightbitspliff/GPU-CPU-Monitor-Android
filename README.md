@@ -58,9 +58,19 @@ Der Nest Hub lädt die Seite direkt vom PC; das Handy muss dafür nicht an sein.
 
 | GPU | Quelle | Werte |
 |---|---|---|
-| NVIDIA | NVML / `nvidia-smi` | Auslastung, VRAM, Temperatur, Leistung |
-| AMD / Intel unter Windows | Windows-Leistungsindikatoren (wie Task-Manager) | Auslastung, VRAM |
-| AMD unter Linux | sysfs | Auslastung, VRAM, Temperatur |
+| NVIDIA | NVML / `nvidia-smi` | Auslastung, VRAM, Temperatur, Leistung, Takt |
+| AMD / Intel unter Windows | Windows-Leistungsindikatoren + LibreHardwareMonitorLib | Auslastung, VRAM, Temperatur, Leistung, Takt |
+| AMD unter Linux | sysfs | Auslastung, VRAM, Temperatur, Takt |
+
+## CPU-Temperatur unter Windows
+
+Windows gibt die CPU-Temperatur nur über einen Treiber heraus. Die `PCMonitorServer.exe`
+bringt dafür LibreHardwareMonitorLib und den Installer des signierten Open-Source-Treibers
+**PawnIO** mit (den nutzt auch LibreHardwareMonitor selbst):
+
+- Die EXE startet deshalb mit Administratorrechten (Windows fragt beim Start nach).
+- Beim ersten Start fragt das Server-Fenster, ob PawnIO installiert werden soll; später
+  geht das über den Knopf **„CPU-Temperatur aktivieren“** im Server-Fenster.
 
 ## Server ohne EXE (mit Python)
 

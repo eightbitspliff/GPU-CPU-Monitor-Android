@@ -47,12 +47,42 @@ jobs:
           python-version: "3.12"
       - name: Abhängigkeiten
         run: pip install -r requirements.txt pyinstaller
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Sensor-Modul bauen (LibreHardwareMonitorLib)
+        run: |
+          dotnet publish sensor_helper/SensorHelper.csproj -c Release -o sensor_helper/out
+          if ($LASTEXITCODE) { exit 1 }
+          Get-ChildItem sensor_helper/out | Select-Object Name, Length | Format-Table -AutoSize
+      - name: Treiber-Installer PawnIO holen
+        run: |
+          Invoke-WebRequest https://github.com/namazso/PawnIO.Setup/releases/latest/download/PawnIO_setup.exe -OutFile PawnIO_setup.exe
+          (Get-Item PawnIO_setup.exe).Length
+      - name: Sensor-Modul testen
+        shell: pwsh
+        run: |
+          $p = New-Object System.Diagnostics.Process
+          $p.StartInfo.FileName = (Resolve-Path sensor_helper/out/SensorHelper.exe).Path
+          $p.StartInfo.UseShellExecute = $false
+          $p.StartInfo.RedirectStandardOutput = $true
+          $p.StartInfo.RedirectStandardError = $true
+          [void]$p.Start()
+          $lines = @()
+          for ($i = 0; $i -lt 3; $i++) { $lines += $p.StandardOutput.ReadLine() }
+          $p.Kill()
+          $lines | ForEach-Object { Write-Host $_ }
+          Write-Host "stderr: $($p.StandardError.ReadToEnd())"
+          $j = $lines[-1] | ConvertFrom-Json
+          if ($j.error) { throw "Sensor-Modul meldet Fehler: $($j.error)" }
+          if ($null -eq $j.admin) { throw "Sensor-Modul liefert keine Daten" }
       - name: EXE bauen
         run: |
           python make_icon.py
           if ($LASTEXITCODE) { exit 1 }
-          pyinstaller --onefile --noconsole --name PCMonitorServer --icon icon.ico `
+          pyinstaller --onefile --noconsole --uac-admin --name PCMonitorServer --icon icon.ico `
             --hidden-import pynvml --hidden-import pystray._win32 `
+            --add-data "sensor_helper/out;sensor_helper" --add-data "PawnIO_setup.exe;." `
             --collect-submodules pychromecast --collect-submodules zeroconf pc_monitor_server.py
       - name: EXE testen (startet im Tray, liefert Werte)
         shell: pwsh
@@ -68,6 +98,8 @@ jobs:
             if (-not $r) { throw "Server hat nicht geantwortet" }
             Write-Host "CPU $($r.cpu.usage) %  RAM $($r.ram.usage) %  GPU-Quelle $($r.gpu_source)"
             Write-Host "Kerntakte: $($r.cpu.core_freq_mhz -join ', ') MHz  CPU-Temp: $($r.cpu.temp_c)"
+            Write-Host "Temp-Hinweis: $($r.cpu.temp_note)  GPUs: $($r.gpus | ConvertTo-Json -Compress)"
+            if ($r.cpu.temp_note -eq "Sensor-Modul fehlt im PC-Server") { throw $r.cpu.temp_note }
             if (-not $r.cpu.core_freq_mhz -or $r.cpu.core_freq_mhz.Count -ne $r.cpu.cores.Count) { throw "Takt je CPU-Kern fehlt" }
             $html = Invoke-WebRequest http://127.0.0.1:47811/ -UseBasicParsing -TimeoutSec 5
             if ($html.Content -notmatch "PC Monitor") { throw "Dashboard fehlt" }
@@ -77,6 +109,21 @@ jobs:
           } finally {
             Stop-Process -Id $p.Id -Force
           }
+      - name: PawnIO-Installation testen (Treiber für CPU-Temperatur)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $i = Start-Process -FilePath .\PawnIO_setup.exe -ArgumentList "-install","-silent" -Wait -PassThru
+          Write-Host "PawnIO-Setup Exitcode: $($i.ExitCode)"
+          if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PawnIO")) { throw "PawnIO nicht installiert" }
+          $p = New-Object System.Diagnostics.Process
+          $p.StartInfo.FileName = (Resolve-Path sensor_helper/out/SensorHelper.exe).Path
+          $p.StartInfo.UseShellExecute = $false
+          $p.StartInfo.RedirectStandardOutput = $true
+          [void]$p.Start()
+          $l = @(); for ($k = 0; $k -lt 3; $k++) { $l += $p.StandardOutput.ReadLine() }
+          $p.Kill()
+          Write-Host "Mit PawnIO: $($l[-1])"
       - uses: actions/upload-artifact@v4
         with:
           name: PCMonitorServer-exe

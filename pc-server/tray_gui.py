@@ -4,6 +4,8 @@ Minimieren -> Fenster verschwindet, Icon bleibt im Systemtray.
 Doppelklick aufs Tray-Icon oder "Anzeigen" holt das Fenster zurück.
 """
 
+import json
+import os
 import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
@@ -25,6 +27,26 @@ def show_error(msg):
     root.withdraw()
     messagebox.showerror("PC Monitor Server", msg)
     root.destroy()
+
+
+SETTINGS = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "PCMonitor", "settings.json")
+
+
+def _load_settings():
+    try:
+        with open(SETTINGS, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_settings(d):
+    try:
+        os.makedirs(os.path.dirname(SETTINGS), exist_ok=True)
+        with open(SETTINGS, "w", encoding="utf-8") as f:
+            json.dump(d, f)
+    except Exception:
+        pass
 
 
 def _pct(v):
@@ -63,7 +85,46 @@ def run(sampler, caster, ips, port, start_hidden=False):
     tk.Label(card, textvariable=gpu_var, bg=CARD, fg=GPU,
              font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=12, pady=(8, 0))
     tk.Label(card, text="GPU-Quelle: " + (sampler.gpu.source or "keine GPU-Daten gefunden"),
-             bg=CARD, fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", padx=12, pady=(0, 10))
+             bg=CARD, fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", padx=12)
+
+    # ------------------------------------------------ CPU-Temperatur (Treiber PawnIO)
+    lhm = sampler.lhm
+    temp_var = tk.StringVar(value="CPU-Temperatur: –")
+    tk.Label(card, textvariable=temp_var, bg=CARD, fg=MUTED, font=("Segoe UI", 8),
+             wraplength=300, justify="left").pack(anchor="w", padx=12, pady=(4, 0))
+    pawn_btn = ttk.Button(card, text="CPU-Temperatur aktivieren (Treiber PawnIO installieren)")
+    pawn_row = {"shown": False}
+
+    def install_pawnio():
+        pawn_btn.configure(state="disabled", text="Installiere Treiber…")
+
+        def work():
+            ok, msg = lhm.install_pawnio()
+
+            def done():
+                pawn_btn.configure(state="normal", text="CPU-Temperatur aktivieren (Treiber PawnIO installieren)")
+                (messagebox.showinfo if ok else messagebox.showerror)("PC Monitor Server", msg)
+            root.after(0, done)
+        threading.Thread(target=work, daemon=True).start()
+
+    pawn_btn.configure(command=install_pawnio)
+    tk.Frame(card, bg=CARD, height=10).pack(side="bottom")
+
+    def ask_pawnio_once():
+        settings = _load_settings()
+        if not lhm.needs_pawnio() or not lhm.admin or settings.get("pawnio_declined"):
+            return
+        if messagebox.askyesno(
+                "PC Monitor Server",
+                "Windows gibt die CPU-Temperatur nur über einen Treiber heraus.\n\n"
+                "Soll der Treiber PawnIO (signiert, Open Source, auch von LibreHardwareMonitor "
+                "genutzt) jetzt installiert werden?"):
+            install_pawnio()
+        else:
+            settings["pawnio_declined"] = True
+            _save_settings(settings)
+
+    root.after(5000, ask_pawnio_once)
 
     # ------------------------------------------------ Nest Hub / Chromecast
     cast_card = tk.Frame(root, bg=CARD)
@@ -142,6 +203,7 @@ def run(sampler, caster, ips, port, start_hidden=False):
         root.after(0, _quit)
 
     def _quit():
+        lhm.stop()
         tray.stop()
         root.destroy()
 
@@ -169,8 +231,19 @@ def run(sampler, caster, ips, port, start_hidden=False):
             cpu = d["cpu"]["usage"]
             gpus = d.get("gpus") or []
             gpu = gpus[0]["usage"] if gpus else None
-            cpu_var.set(f"CPU  {_pct(cpu)}")
-            gpu_var.set(f"GPU  {_pct(gpu)}")
+            temp = d["cpu"].get("temp_c")
+            g0 = gpus[0] if gpus else {}
+            cpu_var.set(f"CPU  {_pct(cpu)}" + (f"  ·  {round(temp)} °C" if temp is not None else ""))
+            gpu_var.set(f"GPU  {_pct(gpu)}" + (f"  ·  {round(g0['power_w'])} W" if g0.get("power_w") is not None else ""))
+            note = d["cpu"].get("temp_note")
+            temp_var.set("CPU-Temperatur: " + (f"{round(temp)} °C" if temp is not None else (note or "–")))
+            want = lhm.needs_pawnio() and lhm.admin
+            if want != pawn_row["shown"]:
+                if want:
+                    pawn_btn.pack(anchor="w", padx=12, pady=(4, 0))
+                else:
+                    pawn_btn.pack_forget()
+                pawn_row["shown"] = want
             try:
                 tray.title = f"PC Monitor – CPU {_pct(cpu)} · GPU {_pct(gpu)}"
             except Exception:

@@ -3,19 +3,16 @@
 Windows: Leistungsindikatoren über pdh.dll (ctypes, ohne Zusatzpakete).
          Aktueller Takt = "Processor Frequency" (Nenntakt) * "% Processor Performance"
          – dieselbe Rechnung wie im Task-Manager.
-         Temperatur: LibreHardwareMonitor/OpenHardwareMonitor (falls laufend, genau),
+         Temperatur: mitgelieferter SensorHelper (LibreHardwareMonitorLib, genau),
          sonst ACPI-Thermalzone (ohne Adminrechte, aber nur ungefähr).
 Linux:   psutil.cpu_freq(percpu=True) und psutil.sensors_temperatures().
 """
 
 import os
-import subprocess
-import threading
 
 import psutil
 
 IS_WINDOWS = os.name == "nt"
-NO_WINDOW = 0x08000000 if IS_WINDOWS else 0
 
 
 def _valid_temp(t):
@@ -104,61 +101,10 @@ def _core_key(name):
         return None
 
 
-class _HardwareMonitorTemp(threading.Thread):
-    """Liest die CPU-Temperatur aus LibreHardwareMonitor/OpenHardwareMonitor (WMI),
-    sofern eines der Programme läuft. Beendet sich, wenn keins vorhanden ist."""
-
-    _PS_SCRIPT = r"""
-$ErrorActionPreference = 'SilentlyContinue'
-$inv = [Globalization.CultureInfo]::InvariantCulture
-while ($true) {
-  $t = $null
-  foreach ($ns in 'root/LibreHardwareMonitor', 'root/OpenHardwareMonitor') {
-    $s = Get-CimInstance -Namespace $ns -ClassName Sensor -Filter "SensorType='Temperature'" |
-         Where-Object { $_.Identifier -match 'cpu' }
-    if ($s) {
-      $pick = $s | Where-Object { $_.Name -match 'Package|Tctl|Tdie' } | Select-Object -First 1
-      if (-not $pick) { $pick = $s | Sort-Object Value -Descending | Select-Object -First 1 }
-      $t = [double]$pick.Value
-      break
-    }
-  }
-  if ($t -ne $null) { [Console]::Out.WriteLine("T:" + $t.ToString($inv)) }
-  else { [Console]::Out.WriteLine("T:") }
-  [Console]::Out.Flush()
-  Start-Sleep -Seconds 2
-}
-"""
-
-    def __init__(self):
-        super().__init__(daemon=True)
-        self.value = None
-        self.proc = None
-
-    def run(self):
-        try:
-            self.proc = subprocess.Popen(
-                ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-                 "-Command", self._PS_SCRIPT],
-                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                text=True, creationflags=NO_WINDOW)
-        except Exception:
-            return
-        for line in self.proc.stdout:
-            line = line.strip()
-            if not line.startswith("T:"):
-                continue
-            try:
-                t = float(line[2:].replace(",", "."))
-                self.value = round(t, 1) if _valid_temp(t) else None
-            except ValueError:
-                self.value = None
-
-
 class CpuSensors:
-    def __init__(self):
+    def __init__(self, lhm=None):
         self._pdh = None
-        self._hwmon = None
+        self._lhm = lhm
         if IS_WINDOWS:
             try:
                 self._pdh = _Pdh({
@@ -168,8 +114,6 @@ class CpuSensors:
                 })
             except Exception as e:
                 print("Leistungsindikatoren nicht verfügbar:", e)
-            self._hwmon = _HardwareMonitorTemp()
-            self._hwmon.start()
 
     def read(self):
         """-> (Takt je Kern in MHz oder None, mittlerer Takt in MHz, Temperatur in °C)"""
@@ -209,8 +153,9 @@ class CpuSensors:
         return None
 
     def _temperature(self):
-        if self._hwmon is not None and self._hwmon.value is not None:
-            return self._hwmon.value
+        t = self._lhm.cpu_temp() if self._lhm is not None else None
+        if _valid_temp(t):
+            return round(t, 1)
         if self._pdh is not None:
             try:
                 zones = [k - 273.15 for k in self._pdh.values("zone").values()]

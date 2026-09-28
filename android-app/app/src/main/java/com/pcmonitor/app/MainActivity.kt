@@ -26,6 +26,7 @@ class MainActivity : Activity() {
     private lateinit var gpuGauge: GaugeView
     private lateinit var cpuName: TextView
     private lateinit var cpuInfo: TextView
+    private lateinit var cpuTempNote: TextView
     private lateinit var gpuName: TextView
     private lateinit var gpuInfo: TextView
     private lateinit var graph: GraphView
@@ -56,6 +57,7 @@ class MainActivity : Activity() {
         gpuGauge = findViewById(R.id.gpuGauge)
         cpuName = findViewById(R.id.cpuName)
         cpuInfo = findViewById(R.id.cpuInfo)
+        cpuTempNote = findViewById(R.id.cpuTempNote)
         gpuName = findViewById(R.id.gpuName)
         gpuInfo = findViewById(R.id.gpuInfo)
         graph = findViewById(R.id.graph)
@@ -154,6 +156,10 @@ class MainActivity : Activity() {
                 s.cpuTempC?.let { "${Math.round(it)} °C" } ?: "– °C",
             ).joinToString("  ·  ")
 
+            val note = if (s.cpuTempC == null) s.cpuTempNote else null
+            cpuTempNote.text = note ?: ""
+            cpuTempNote.visibility = if (note != null) View.VISIBLE else View.GONE
+
             coreGrid.setCores(s.coreUsage, s.coreFreqMhz)
             val n = maxOf(s.coreUsage.size, s.coreFreqMhz.size)
             coresTitle.text = buildString {
@@ -165,9 +171,9 @@ class MainActivity : Activity() {
             gpuGauge.setValue(g?.usage)
             gpuName.text = g?.name ?: "Keine GPU-Daten"
             gpuInfo.text = if (g == null) "" else listOfNotNull(
+                g.powerW?.let { "${Math.round(it)} W" },
                 g.clockMhz?.let { "${Math.round(it)} MHz" },
                 g.tempC?.let { "${Math.round(it)} °C" },
-                g.powerW?.let { "${Math.round(it)} W" },
             ).joinToString("  ·  ")
 
             ramText.text = "RAM  ${fmtGb(s.ramUsedMb)} / ${fmtGb(s.ramTotalMb)}  (${fmtPct(s.ramUsage)})"

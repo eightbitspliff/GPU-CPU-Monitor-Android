@@ -35,6 +35,7 @@ except ImportError:
     sys.exit(1)
 
 from cpu_sensors import CpuSensors
+from lhm_helper import LhmHelper, merge_gpus
 
 HTTP_PORT = int(os.environ.get("PCMON_PORT", "47811"))
 DISCOVERY_PORT = 47810
@@ -295,7 +296,8 @@ class Sampler(threading.Thread):
         self.lock = threading.Lock()
         self.gpu = GpuReader()
         self.cpu_name = cpu_name()
-        self.cpu_sensors = CpuSensors()
+        self.lhm = LhmHelper()
+        self.cpu_sensors = CpuSensors(self.lhm)
         self.hostname = socket.gethostname()
         self.data = {}
         psutil.cpu_percent(percpu=True)  # erste Messung initialisieren
@@ -323,13 +325,14 @@ class Sampler(threading.Thread):
                 "core_freq_mhz": core_freqs,
                 "freq_mhz": freq_mhz,
                 "temp_c": temp_c,
+                "temp_note": self.lhm.cpu_temp_note() if temp_c is None else None,
             },
             "ram": {
                 "used_mb": round(vm.used / 1048576),
                 "total_mb": round(vm.total / 1048576),
                 "usage": round(vm.percent, 1),
             },
-            "gpus": self.gpu.read(),
+            "gpus": merge_gpus(self.gpu.read(), self.lhm.gpus()),
             "gpu_source": self.gpu.source,
         }
         with self.lock:
@@ -448,6 +451,10 @@ def run_console():
     print(" Dashboard im Browser: http://<diese-ip>:%d/" % HTTP_PORT)
     if caster.target:
         print(" Nest Hub / Chromecast:", caster.target)
+    time.sleep(3)
+    note = sampler.lhm.cpu_temp_note()
+    if note:
+        print(" CPU-Temperatur:", note)
     print(" Beenden mit Strg+C")
     print("=" * 56)
     try:
