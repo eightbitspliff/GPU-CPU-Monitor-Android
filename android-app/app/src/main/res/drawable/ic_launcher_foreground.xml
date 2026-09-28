@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Monitor -->
+    <path android:fillColor="#FFE8ECF2"
+        android:pathData="M30,34h48a4,4 0 0 1 4,4v28a4,4 0 0 1 -4,4H30a4,4 0 0 1 -4,-4V38a4,4 0 0 1 4,-4z" />
+    <path android:fillColor="#FF0E1116"
+        android:pathData="M31,39h46v26H31z" />
+    <path android:fillColor="#FFE8ECF2"
+        android:pathData="M48,70h12v5h6v3H42v-3h6z" />
+    <!-- Balken -->
+    <path android:fillColor="#FF3FA9F5" android:pathData="M36,52h7v10h-7z" />
+    <path android:fillColor="#FF7BD85A" android:pathData="M47,44h7v18h-7z" />
+    <path android:fillColor="#FFF5A623" android:pathData="M58,48h7v14h-7z" />
+</vector>

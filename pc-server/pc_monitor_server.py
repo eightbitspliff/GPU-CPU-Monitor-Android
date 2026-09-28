@@ -1,0 +1,396 @@
+#!/usr/bin/env python3
+"""PC Monitor Server
+
+Liefert CPU-, RAM- und GPU-Auslastung dieses PCs als JSON im lokalen Netzwerk,
+damit die Android-App "PC Monitor" sie anzeigen kann.
+
+  HTTP  GET http://<pc-ip>:47811/stats   -> aktuelle Werte als JSON
+  UDP   Port 47810                       -> automatische Suche der App
+
+Start:  python pc_monitor_server.py   (oder die fertige PCMonitorServer.exe)
+"""
+
+import json
+import os
+import platform
+import shutil
+import socket
+import subprocess
+import sys
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+try:
+    import psutil
+except ImportError:
+    print("Das Paket 'psutil' fehlt. Installieren mit:  pip install psutil")
+    sys.exit(1)
+
+HTTP_PORT = int(os.environ.get("PCMON_PORT", "47811"))
+DISCOVERY_PORT = 47810
+DISCOVERY_REQUEST = b"PCMON_DISCOVER"
+SAMPLE_INTERVAL = 1.0
+IS_WINDOWS = os.name == "nt"
+NO_WINDOW = 0x08000000 if IS_WINDOWS else 0  # CREATE_NO_WINDOW
+
+
+# --------------------------------------------------------------------------- CPU
+
+def cpu_name():
+    try:
+        if IS_WINDOWS:
+            import winreg
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                                 r"HARDWARE\DESCRIPTION\System\CentralProcessor\0")
+            return winreg.QueryValueEx(key, "ProcessorNameString")[0].strip()
+        if sys.platform.startswith("linux"):
+            with open("/proc/cpuinfo") as f:
+                for line in f:
+                    if line.startswith("model name"):
+                        return line.split(":", 1)[1].strip()
+        if sys.platform == "darwin":
+            return subprocess.check_output(
+                ["sysctl", "-n", "machdep.cpu.brand_string"], text=True).strip()
+    except Exception:
+        pass
+    return platform.processor() or "CPU"
+
+
+def cpu_temperature():
+    try:
+        temps = psutil.sensors_temperatures()  # nur Linux/BSD
+    except Exception:
+        return None
+    for key in ("coretemp", "k10temp", "zenpower", "cpu_thermal", "acpitz"):
+        entries = temps.get(key)
+        if entries:
+            return round(max(e.current for e in entries), 1)
+    return None
+
+
+# --------------------------------------------------------------------------- GPU
+
+class GpuReader:
+    """Liest die GPU-Auslastung. Probiert der Reihe nach:
+    NVML (NVIDIA), nvidia-smi, Windows-Leistungsindikatoren (AMD/Intel/alle),
+    Linux sysfs (AMD)."""
+
+    def __init__(self):
+        self.source = None
+        self._nvml = None
+        self._nvml_handles = []
+        self._win_value = None
+        self._win_proc = None
+
+        if self._init_nvml():
+            self.source = "nvml"
+        elif shutil.which("nvidia-smi") and self._read_nvidia_smi():
+            self.source = "nvidia-smi"
+        elif IS_WINDOWS and self._init_windows_counters():
+            self.source = "windows-counters"
+        elif self._read_sysfs():
+            self.source = "sysfs"
+
+    # NVIDIA über NVML --------------------------------------------------------
+    def _init_nvml(self):
+        try:
+            import pynvml
+            pynvml.nvmlInit()
+            count = pynvml.nvmlDeviceGetCount()
+            if count == 0:
+                return False
+            self._nvml = pynvml
+            self._nvml_handles = [pynvml.nvmlDeviceGetHandleByIndex(i) for i in range(count)]
+            return True
+        except Exception:
+            return False
+
+    def _read_nvml(self):
+        n = self._nvml
+        result = []
+        for h in self._nvml_handles:
+            gpu = {"name": None, "usage": None, "mem_used_mb": None,
+                   "mem_total_mb": None, "temp_c": None, "power_w": None}
+            try:
+                name = n.nvmlDeviceGetName(h)
+                gpu["name"] = name.decode() if isinstance(name, bytes) else name
+            except Exception:
+                pass
+            try:
+                gpu["usage"] = float(n.nvmlDeviceGetUtilizationRates(h).gpu)
+            except Exception:
+                pass
+            try:
+                mem = n.nvmlDeviceGetMemoryInfo(h)
+                gpu["mem_used_mb"] = round(mem.used / 1048576)
+                gpu["mem_total_mb"] = round(mem.total / 1048576)
+            except Exception:
+                pass
+            try:
+                gpu["temp_c"] = float(n.nvmlDeviceGetTemperature(h, n.NVML_TEMPERATURE_GPU))
+            except Exception:
+                pass
+            try:
+                gpu["power_w"] = round(n.nvmlDeviceGetPowerUsage(h) / 1000.0, 1)
+            except Exception:
+                pass
+            result.append(gpu)
+        return result
+
+    # NVIDIA über nvidia-smi --------------------------------------------------
+    def _read_nvidia_smi(self):
+        try:
+            out = subprocess.check_output(
+                ["nvidia-smi",
+                 "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw",
+                 "--format=csv,noheader,nounits"],
+                text=True, timeout=5, creationflags=NO_WINDOW)
+        except Exception:
+            return None
+
+        def num(v):
+            try:
+                return float(v)
+            except ValueError:
+                return None
+
+        result = []
+        for line in out.strip().splitlines():
+            p = [x.strip() for x in line.split(",")]
+            if len(p) < 6:
+                continue
+            result.append({"name": p[0], "usage": num(p[1]), "mem_used_mb": num(p[2]),
+                           "mem_total_mb": num(p[3]), "temp_c": num(p[4]), "power_w": num(p[5])})
+        return result or None
+
+    # Windows: Leistungsindikatoren (funktioniert für jede GPU) ---------------
+    # Die WMI-Klasse hat sprachunabhängige Namen (anders als Get-Counter).
+    _PS_SCRIPT = r"""
+$ErrorActionPreference = 'SilentlyContinue'
+$name = (Get-CimInstance Win32_VideoController | Select-Object -First 1).Name
+[Console]::Out.WriteLine("NAME:" + $name)
+[Console]::Out.Flush()
+while ($true) {
+  $eng = Get-CimInstance Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine
+  $max = 0
+  if ($eng) {
+    $groups = $eng | Group-Object { ($_.Name -split 'engtype_')[-1] }
+    foreach ($g in $groups) {
+      $s = ($g.Group | Measure-Object -Property UtilizationPercentage -Sum).Sum
+      if ($s -gt $max) { $max = $s }
+    }
+  }
+  $mem = Get-CimInstance Win32_PerfFormattedData_GPUPerformanceCounters_GPUAdapterMemory
+  $used = 0
+  if ($mem) { $used = ($mem | Measure-Object -Property DedicatedUsage -Sum).Sum }
+  [Console]::Out.WriteLine("VAL:" + [math]::Min(100, $max) + ";" + $used)
+  [Console]::Out.Flush()
+  Start-Sleep -Milliseconds 800
+}
+"""
+
+    def _init_windows_counters(self):
+        try:
+            self._win_proc = subprocess.Popen(
+                ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                 "-Command", self._PS_SCRIPT],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+                creationflags=NO_WINDOW)
+        except Exception:
+            return False
+        self._win_value = {"name": "GPU", "usage": None, "mem_used_mb": None,
+                           "mem_total_mb": None, "temp_c": None, "power_w": None}
+        threading.Thread(target=self._pump_windows, daemon=True).start()
+        return True
+
+    def _pump_windows(self):
+        for line in self._win_proc.stdout:
+            line = line.strip()
+            if line.startswith("NAME:"):
+                self._win_value["name"] = line[5:] or "GPU"
+            elif line.startswith("VAL:"):
+                try:
+                    usage, used = line[4:].split(";")
+                    self._win_value["usage"] = round(float(usage.replace(",", ".")), 1)
+                    self._win_value["mem_used_mb"] = round(float(used.replace(",", ".")) / 1048576)
+                except ValueError:
+                    pass
+
+    # Linux: AMD über sysfs ---------------------------------------------------
+    def _read_sysfs(self):
+        base = "/sys/class/drm"
+        if not os.path.isdir(base):
+            return None
+        result = []
+        for card in sorted(os.listdir(base)):
+            dev = os.path.join(base, card, "device")
+            busy = os.path.join(dev, "gpu_busy_percent")
+            if "-" in card or not os.path.exists(busy):
+                continue
+
+            def rd(path):
+                try:
+                    with open(path) as f:
+                        return f.read().strip()
+                except OSError:
+                    return None
+
+            gpu = {"name": card, "usage": None, "mem_used_mb": None,
+                   "mem_total_mb": None, "temp_c": None, "power_w": None}
+            v = rd(busy)
+            gpu["usage"] = float(v) if v else None
+            v = rd(os.path.join(dev, "mem_info_vram_used"))
+            gpu["mem_used_mb"] = round(int(v) / 1048576) if v else None
+            v = rd(os.path.join(dev, "mem_info_vram_total"))
+            gpu["mem_total_mb"] = round(int(v) / 1048576) if v else None
+            hwmon = os.path.join(dev, "hwmon")
+            if os.path.isdir(hwmon):
+                for h in os.listdir(hwmon):
+                    t = rd(os.path.join(hwmon, h, "temp1_input"))
+                    if t:
+                        gpu["temp_c"] = int(t) / 1000.0
+                        break
+            result.append(gpu)
+        return result or None
+
+    def read(self):
+        if self.source == "nvml":
+            return self._read_nvml()
+        if self.source == "nvidia-smi":
+            return self._read_nvidia_smi() or []
+        if self.source == "windows-counters":
+            return [dict(self._win_value)]
+        if self.source == "sysfs":
+            return self._read_sysfs() or []
+        return []
+
+
+# --------------------------------------------------------------------------- Sampler
+
+class Sampler(threading.Thread):
+    def __init__(self):
+        super().__init__(daemon=True)
+        self.lock = threading.Lock()
+        self.gpu = GpuReader()
+        self.cpu_name = cpu_name()
+        self.hostname = socket.gethostname()
+        self.data = {}
+        psutil.cpu_percent(percpu=True)  # erste Messung initialisieren
+
+    def run(self):
+        while True:
+            time.sleep(SAMPLE_INTERVAL)
+            try:
+                self.sample()
+            except Exception as e:
+                print("Messfehler:", e)
+
+    def sample(self):
+        cores = psutil.cpu_percent(percpu=True)
+        total = round(sum(cores) / len(cores), 1) if cores else 0.0
+        try:
+            freq = psutil.cpu_freq()
+            freq_mhz = round(freq.current) if freq else None
+        except Exception:
+            freq_mhz = None
+        vm = psutil.virtual_memory()
+        data = {
+            "host": self.hostname,
+            "time": time.time(),
+            "cpu": {
+                "name": self.cpu_name,
+                "usage": total,
+                "cores": [round(c, 1) for c in cores],
+                "freq_mhz": freq_mhz,
+                "temp_c": cpu_temperature(),
+            },
+            "ram": {
+                "used_mb": round(vm.used / 1048576),
+                "total_mb": round(vm.total / 1048576),
+                "usage": round(vm.percent, 1),
+            },
+            "gpus": self.gpu.read(),
+            "gpu_source": self.gpu.source,
+        }
+        with self.lock:
+            self.data = data
+
+    def snapshot(self):
+        with self.lock:
+            return self.data
+
+
+# --------------------------------------------------------------------------- Netzwerk
+
+sampler = None
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path.split("?")[0] in ("/", "/stats"):
+            body = json.dumps(sampler.snapshot()).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            self.send_error(404)
+
+    def log_message(self, *args):
+        pass  # keine Ausgabe pro Anfrage
+
+
+def discovery_responder():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(("", DISCOVERY_PORT))
+    reply = json.dumps({"app": "pcmon", "name": socket.gethostname(), "port": HTTP_PORT}).encode()
+    while True:
+        try:
+            msg, addr = sock.recvfrom(1024)
+            if msg.strip() == DISCOVERY_REQUEST:
+                sock.sendto(reply, addr)
+        except Exception:
+            time.sleep(0.5)
+
+
+def local_ips():
+    ips = set()
+    try:
+        for addrs in psutil.net_if_addrs().values():
+            for a in addrs:
+                if a.family == socket.AF_INET and not a.address.startswith(("127.", "169.254.")):
+                    ips.add(a.address)
+    except Exception:
+        pass
+    return sorted(ips)
+
+
+def main():
+    global sampler
+    sampler = Sampler()
+    sampler.sample()
+    sampler.start()
+    threading.Thread(target=discovery_responder, daemon=True).start()
+
+    server = ThreadingHTTPServer(("0.0.0.0", HTTP_PORT), Handler)
+    print("=" * 56)
+    print(" PC Monitor Server läuft")
+    print(" CPU:", sampler.cpu_name)
+    print(" GPU-Quelle:", sampler.gpu.source or "keine GPU-Daten gefunden")
+    print(" In der App diese Adresse eintragen (oder 'Suchen' tippen):")
+    for ip in local_ips():
+        print(f"   {ip}:{HTTP_PORT}")
+    print(" Beenden mit Strg+C")
+    print("=" * 56)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()
