@@ -50,6 +50,7 @@ jobs:
       - name: EXE bauen
         run: |
           python make_icon.py
+          if ($LASTEXITCODE) { exit 1 }
           pyinstaller --onefile --noconsole --name PCMonitorServer --icon icon.ico `
             --hidden-import pynvml --hidden-import pystray._win32 `
             --collect-submodules pychromecast --collect-submodules zeroconf pc_monitor_server.py
