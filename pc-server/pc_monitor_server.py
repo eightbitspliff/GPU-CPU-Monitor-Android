@@ -648,6 +648,12 @@ def main():
         sys.exit(1)
 
     try:
+        import autostart
+        autostart.apply_from_config(caster.cfg)
+    except Exception as e:
+        print("Autostart konnte nicht gesetzt werden:", e)
+
+    try:
         if gui:
             gui.run(sampler, caster, local_ips(), HTTP_PORT, start_hidden="--tray" in args)
         else:
