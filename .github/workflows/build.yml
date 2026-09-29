@@ -117,8 +117,13 @@ jobs:
             Write-Host "Cast verfügbar: $($c.available)  Geräte: $($c.devices.Count)  $($c.error)"
             if (-not $c.available) { throw "Cast-Unterstützung fehlt in der EXE" }
           } finally {
-            Stop-Process -Id $p.Id -Force
+            # Server hart beenden (wie "Task beenden"): das Sensor-Modul muss mit enden
+            Stop-Process -Name PCMonitorServer -Force -ErrorAction SilentlyContinue
           }
+          Start-Sleep -Seconds 2
+          $left = Get-Process SensorHelper -ErrorAction SilentlyContinue
+          if ($left) { throw "Sensor-Modul läuft nach dem Beenden des Servers weiter" }
+          Write-Host "Nach dem Beenden läuft kein Hilfsprozess mehr: ja"
       - name: CPU-Verbrauch messen (30 s, Abfrage jede Sekunde wie App/Nest Hub)
         shell: pwsh
         run: |

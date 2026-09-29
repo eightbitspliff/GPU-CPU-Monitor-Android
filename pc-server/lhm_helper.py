@@ -61,7 +61,7 @@ class LhmHelper:
 
     def _run(self):
         failures = 0
-        while failures < 5:
+        while failures < 5 and self.path:
             started = time.time()
             try:
                 with self._lock:

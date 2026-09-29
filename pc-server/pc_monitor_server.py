@@ -522,10 +522,66 @@ def kill_old_helpers():
     return killed
 
 
+_job_handle = None
+
+
+def bind_children_to_process():
+    """Hängt diesen Prozess (und damit alle später gestarteten Hilfsprozesse) an ein
+    Windows-Job-Objekt mit KILL_ON_JOB_CLOSE: Endet der Server – beendet, abgestürzt
+    oder per Task-Manager –, beendet Windows alle Hilfsprozesse automatisch mit."""
+    global _job_handle
+    if not IS_WINDOWS or _job_handle:
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class IoCounters(ctypes.Structure):
+            _fields_ = [(n, ctypes.c_ulonglong) for n in (
+                "ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
+                "ReadTransferCount", "WriteTransferCount", "OtherTransferCount")]
+
+        class BasicLimit(ctypes.Structure):
+            _fields_ = [("PerProcessUserTimeLimit", ctypes.c_longlong),
+                        ("PerJobUserTimeLimit", ctypes.c_longlong),
+                        ("LimitFlags", wintypes.DWORD),
+                        ("MinimumWorkingSetSize", ctypes.c_size_t),
+                        ("MaximumWorkingSetSize", ctypes.c_size_t),
+                        ("ActiveProcessLimit", wintypes.DWORD),
+                        ("Affinity", ctypes.c_size_t),
+                        ("PriorityClass", wintypes.DWORD),
+                        ("SchedulingClass", wintypes.DWORD)]
+
+        class ExtendedLimit(ctypes.Structure):
+            _fields_ = [("BasicLimitInformation", BasicLimit), ("IoInfo", IoCounters),
+                        ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
+                        ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+        k = ctypes.WinDLL("kernel32", use_last_error=True)
+        k.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+        k.CreateJobObjectW.restype = ctypes.c_void_p
+        k.SetInformationJobObject.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+        k.AssignProcessToJobObject.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        k.GetCurrentProcess.restype = ctypes.c_void_p
+
+        job = k.CreateJobObjectW(None, None)
+        if not job:
+            return
+        info = ExtendedLimit()
+        info.BasicLimitInformation.LimitFlags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        if not k.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info)):
+            return
+        if k.AssignProcessToJobObject(job, k.GetCurrentProcess()):
+            _job_handle = job  # Handle offen halten; schließt Windows es beim Prozessende -> Kinder enden
+    except Exception as e:
+        print("Job-Objekt nicht verfügbar:", e)
+
+
 def start_backend():
     """Startet Messung, UDP-Suche und HTTP-Server im Hintergrund."""
     global sampler, caster
     save_resources()
+    bind_children_to_process()
     kill_old_helpers()
     sampler = Sampler()
     sampler.sample()
@@ -583,10 +639,25 @@ def main():
             print(msg)
         sys.exit(1)
 
-    if gui:
-        gui.run(sampler, caster, local_ips(), HTTP_PORT, start_hidden="--tray" in args)
-    else:
-        run_console()
+    try:
+        if gui:
+            gui.run(sampler, caster, local_ips(), HTTP_PORT, start_hidden="--tray" in args)
+        else:
+            run_console()
+    finally:
+        shutdown()
+
+
+def shutdown():
+    """Beim Schließen alles beenden: Sensor-Modul stoppen und den Prozess hart beenden.
+    Hintergrund-Threads (z.B. Chromecast/zeroconf) hielten ihn sonst unsichtbar am Leben."""
+    try:
+        if sampler is not None:
+            sampler.lhm.stop()
+    except Exception:
+        pass
+    sys.stdout.flush() if sys.stdout else None
+    os._exit(0)
 
 
 if __name__ == "__main__":
