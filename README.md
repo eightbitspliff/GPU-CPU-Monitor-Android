@@ -30,6 +30,7 @@ hinter das Ziel ` --tray` schreiben – dann startet er direkt unsichtbar im Tra
 ## App-Funktionen
 
 - Große Anzeigen für **CPU** und **GPU** (Auslastung in %), dazu Takt, Temperatur, Stromverbrauch
+- **WLAN** (Netzwerk, Empfang, Band), verbundene **Bluetooth**-Geräte (mit Akkustand) und aktueller **Netzwerk-Traffic**
 - Verlaufsdiagramm der letzten 2 Minuten
 - RAM- und VRAM-Belegung
 - Bildschirm bleibt an (z.B. als Zweitdisplay neben dem PC), abschaltbar im Menü ⋮

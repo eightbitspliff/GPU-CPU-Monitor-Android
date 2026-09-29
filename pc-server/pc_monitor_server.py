@@ -36,6 +36,7 @@ except ImportError:
 
 from cpu_sensors import CpuSensors
 from lhm_helper import LhmHelper, merge_gpus
+from net_sensors import NetSensors
 
 HTTP_PORT = int(os.environ.get("PCMON_PORT", "47811"))
 DISCOVERY_PORT = 47810
@@ -328,6 +329,7 @@ class Sampler(threading.Thread):
         self.cpu_name = cpu_name()
         self.lhm = LhmHelper()
         self.cpu_sensors = CpuSensors(self.lhm)
+        self.net = NetSensors()
         self.hostname = socket.gethostname()
         self.data = {}
         psutil.cpu_percent(percpu=True)  # erste Messung initialisieren
@@ -364,6 +366,7 @@ class Sampler(threading.Thread):
                 "usage": round(vm.percent, 1),
             },
             "gpus": merge_gpus(self.gpu.read(), self.lhm.gpus()),
+            "net": self.net.read(),
             "gpu_source": self.gpu.source,
         }
         with self.lock:

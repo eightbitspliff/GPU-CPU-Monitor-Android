@@ -36,6 +36,10 @@ class MainActivity : Activity() {
     private lateinit var ramBar: BarView
     private lateinit var vramText: TextView
     private lateinit var vramBar: BarView
+    private lateinit var wifiText: TextView
+    private lateinit var wifiBar: BarView
+    private lateinit var btText: TextView
+    private lateinit var trafficText: TextView
     private lateinit var searchButton: Button
 
     private var cpuSeries = 0
@@ -67,6 +71,10 @@ class MainActivity : Activity() {
         ramBar = findViewById(R.id.ramBar)
         vramText = findViewById(R.id.vramText)
         vramBar = findViewById(R.id.vramBar)
+        wifiText = findViewById(R.id.wifiText)
+        wifiBar = findViewById(R.id.wifiBar)
+        btText = findViewById(R.id.btText)
+        trafficText = findViewById(R.id.trafficText)
         searchButton = findViewById(R.id.searchButton)
 
         val cpuColor = getColor(R.color.cpu)
@@ -75,6 +83,7 @@ class MainActivity : Activity() {
         gpuGauge.label = "GPU"; gpuGauge.color = gpuColor
         ramBar.color = getColor(R.color.ram)
         vramBar.color = gpuColor
+        wifiBar.color = getColor(R.color.net)
         coreGrid.color = cpuColor
         cpuSeries = graph.addSeries(cpuColor)
         gpuSeries = graph.addSeries(gpuColor)
@@ -190,6 +199,8 @@ class MainActivity : Activity() {
                 vramBar.setValue(null)
             }
 
+            showNetwork(s)
+
             graph.push(cpuSeries, s.cpuUsage.toFloat())
             graph.push(gpuSeries, g?.usage?.toFloat() ?: Float.NaN)
             graph.commit()
@@ -205,6 +216,35 @@ class MainActivity : Activity() {
             graph.push(gpuSeries, Float.NaN)
             graph.commit()
         }
+    }
+
+    private fun showNetwork(s: PcStats) {
+        val w = s.wifi
+        wifiText.text = when {
+            w == null -> "WLAN –"
+            !w.connected -> "WLAN  nicht verbunden"
+            else -> "WLAN  " + listOfNotNull(
+                w.ssid ?: "verbunden",
+                w.signal?.let { "${Math.round(it)} %" },
+                w.band,
+                w.rxMbps?.let { "${Math.round(it)} MBit/s" },
+            ).joinToString("  ·  ")
+        }
+        wifiBar.setValue(if (w?.connected == true) w.signal else null)
+
+        val bt = s.bluetooth
+        btText.text = when {
+            bt == null -> "Bluetooth –"
+            !bt.available && bt.devices.isEmpty() -> "Bluetooth  aus / kein Adapter"
+            bt.devices.isEmpty() -> "Bluetooth  kein Gerät verbunden"
+            else -> "Bluetooth  " + bt.devices.joinToString(",  ") { d ->
+                d.name + (d.battery?.let { " (${Math.round(it)} %)" } ?: "")
+            }
+        }
+
+        val t = s.traffic
+        trafficText.text = if (t == null) "Traffic –"
+        else "${if (t.isWifi) "WLAN-Traffic" else "Traffic (${t.iface})"}  ↓ ${fmtRate(t.downBps)}   ↑ ${fmtRate(t.upBps)}"
     }
 
     private fun search() {

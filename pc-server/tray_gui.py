@@ -49,6 +49,37 @@ def _save_settings(d):
         pass
 
 
+def _rate(bps):
+    if bps >= 1e6:
+        return f"{bps / 1e6:.1f} MBit/s".replace(".", ",")
+    return f"{round(bps / 1e3)} kBit/s"
+
+
+def _net_text(n):
+    lines = []
+    w = n.get("wifi")
+    if w:
+        if w.get("connected"):
+            parts = [w.get("ssid") or "verbunden"]
+            if w.get("signal") is not None:
+                parts.append(f"{round(w['signal'])} %")
+            if w.get("band"):
+                parts.append(w["band"])
+            lines.append("WLAN: " + " · ".join(parts))
+        else:
+            lines.append("WLAN: nicht verbunden")
+    bt = n.get("bluetooth")
+    if bt:
+        devs = bt.get("devices") or []
+        lines.append("Bluetooth: " + (", ".join(
+            d["name"] + (f" ({round(d['battery'])} %)" if d.get("battery") is not None else "") for d in devs)
+            if devs else "kein Gerät verbunden"))
+    t = n.get("traffic")
+    if t:
+        lines.append(f"{'WLAN' if t.get('wifi') else t.get('iface')}: ↓ {_rate(t['down_bps'])}  ↑ {_rate(t['up_bps'])}")
+    return "\n".join(lines)
+
+
 def _pct(v):
     return "–" if v is None else f"{round(v)} %"
 
@@ -90,6 +121,10 @@ def run(sampler, caster, ips, port, start_hidden=False):
     gpu_power_var = tk.StringVar(value="")
     tk.Label(card, textvariable=gpu_power_var, bg=CARD, fg=MUTED, font=("Segoe UI", 8),
              wraplength=300, justify="left").pack(anchor="w", padx=12)
+
+    net_var = tk.StringVar(value="")
+    tk.Label(card, textvariable=net_var, bg=CARD, fg=TEXT, font=("Segoe UI", 9),
+             wraplength=300, justify="left").pack(anchor="w", padx=12, pady=(6, 0))
 
     # ------------------------------------------------ CPU-Temperatur (Treiber PawnIO)
     lhm = sampler.lhm
@@ -244,6 +279,7 @@ def run(sampler, caster, ips, port, start_hidden=False):
             src = g0.get("power_sources") or {}
             gpu_power_var.set("GPU-Leistungssensoren: " + ", ".join(
                 f"{k} {round(v)} W" for k, v in sorted(src.items(), key=lambda kv: -kv[1])) if src else "")
+            net_var.set(_net_text(d.get("net") or {}))
             note = d["cpu"].get("temp_note")
             temp_var.set("CPU-Temperatur: " + (f"{round(temp)} °C" if temp is not None else (note or "–")))
             want = lhm.needs_pawnio() and lhm.admin

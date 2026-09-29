@@ -14,6 +14,22 @@ data class GpuStats(
     val clockMhz: Double?,
 )
 
+data class WifiStats(
+    val connected: Boolean,
+    val ssid: String?,
+    val signal: Double?,
+    val rssiDbm: Double?,
+    val band: String?,
+    val rxMbps: Double?,
+    val standard: String?,
+)
+
+data class BtDevice(val name: String, val battery: Double?)
+
+data class BtStats(val available: Boolean, val devices: List<BtDevice>)
+
+data class TrafficStats(val iface: String, val isWifi: Boolean, val downBps: Double, val upBps: Double)
+
 data class PcStats(
     val host: String,
     val cpuName: String,
@@ -31,6 +47,9 @@ data class PcStats(
     val ramTotalMb: Double,
     val ramUsage: Double,
     val gpus: List<GpuStats>,
+    val wifi: WifiStats?,
+    val bluetooth: BtStats?,
+    val traffic: TrafficStats?,
 ) {
     val gpu: GpuStats? get() = gpus.firstOrNull()
 }
@@ -62,9 +81,34 @@ object StatsClient {
     private fun JSONObject.num(key: String): Double? =
         if (has(key) && !isNull(key)) optDouble(key).takeIf { !it.isNaN() } else null
 
+    private fun JSONObject.str(key: String): String? =
+        if (has(key) && !isNull(key)) optString(key).ifBlank { null } else null
+
+    private fun parseWifi(w: JSONObject) = WifiStats(
+        connected = w.optBoolean("connected", false),
+        ssid = w.str("ssid"),
+        signal = w.num("signal"),
+        rssiDbm = w.num("rssi_dbm"),
+        band = w.str("band"),
+        rxMbps = w.num("rx_mbps"),
+        standard = w.str("standard"),
+    )
+
+    private fun parseBt(b: JSONObject): BtStats {
+        val arr = b.optJSONArray("devices")
+        val devices = buildList {
+            if (arr != null) for (i in 0 until arr.length()) {
+                val d = arr.optJSONObject(i) ?: continue
+                add(BtDevice(d.str("name") ?: "Gerät", d.num("battery")))
+            }
+        }
+        return BtStats(b.optBoolean("available", devices.isNotEmpty()), devices)
+    }
+
     private fun parse(j: JSONObject): PcStats {
         val cpu = j.getJSONObject("cpu")
         val ram = j.getJSONObject("ram")
+        val net = j.optJSONObject("net")
         val gpuArr = j.optJSONArray("gpus")
         val gpus = buildList {
             if (gpuArr != null) for (i in 0 until gpuArr.length()) {
@@ -100,6 +144,12 @@ object StatsClient {
             ramTotalMb = ram.num("total_mb") ?: 0.0,
             ramUsage = ram.num("usage") ?: 0.0,
             gpus = gpus,
+            wifi = net?.optJSONObject("wifi")?.let { parseWifi(it) },
+            bluetooth = net?.optJSONObject("bluetooth")?.let { parseBt(it) },
+            traffic = net?.optJSONObject("traffic")?.let { t ->
+                TrafficStats(t.optString("iface", "Netzwerk"), t.optBoolean("wifi", false),
+                    t.num("down_bps") ?: 0.0, t.num("up_bps") ?: 0.0)
+            },
         )
     }
 }
@@ -157,6 +207,13 @@ object Prefs {
 }
 
 fun fmtPct(v: Double?) = if (v == null) "–" else "${Math.round(v)} %"
+
+/** Bit/s -> "12,4 MBit/s" bzw. "850 kBit/s". */
+fun fmtRate(bps: Double) = when {
+    bps >= 1e9 -> String.format(java.util.Locale.GERMANY, "%.2f GBit/s", bps / 1e9)
+    bps >= 1e6 -> String.format(java.util.Locale.GERMANY, "%.1f MBit/s", bps / 1e6)
+    else -> "${Math.round(bps / 1e3)} kBit/s"
+}
 
 fun fmtGb(mb: Double?) = if (mb == null) "–" else String.format(java.util.Locale.GERMANY, "%.1f GB", mb / 1024.0)
 

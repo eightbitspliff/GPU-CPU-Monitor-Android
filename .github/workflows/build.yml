@@ -99,6 +99,7 @@ jobs:
             Write-Host "CPU $($r.cpu.usage) %  RAM $($r.ram.usage) %  GPU-Quelle $($r.gpu_source)"
             Write-Host "Kerntakte: $($r.cpu.core_freq_mhz -join ', ') MHz  CPU-Temp: $($r.cpu.temp_c)  CPU-Leistung: $($r.cpu.power_w) W"
             Write-Host "Temp-Hinweis: $($r.cpu.temp_note)  GPUs: $($r.gpus | ConvertTo-Json -Compress)"
+            Write-Host "Netzwerk: $($r.net | ConvertTo-Json -Compress -Depth 5)"
             if ($r.cpu.temp_note -eq "Sensor-Modul fehlt im PC-Server") { throw $r.cpu.temp_note }
             if (-not $r.cpu.core_freq_mhz -or $r.cpu.core_freq_mhz.Count -ne $r.cpu.cores.Count) { throw "Takt je CPU-Kern fehlt" }
             $html = Invoke-WebRequest http://127.0.0.1:47811/ -UseBasicParsing -TimeoutSec 5
