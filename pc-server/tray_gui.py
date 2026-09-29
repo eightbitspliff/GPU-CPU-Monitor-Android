@@ -263,7 +263,7 @@ def run(sampler, caster, ips, port, start_hidden=False):
                 tray.title = f"PC Monitor – CPU {_pct(cpu)} · GPU {_pct(gpu)}"
             except Exception:
                 pass
-        root.after(2000 if visible else 5000, refresh)  # verborgen: nur Tooltip, seltener
+        root.after(1000 if visible else 5000, refresh)  # verborgen: nur Tooltip, seltener
 
     refresh()
     if start_hidden:

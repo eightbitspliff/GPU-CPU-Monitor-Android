@@ -42,7 +42,7 @@ class MainActivity : Activity() {
     private var failures = 0
     private var searching = false
 
-    private val poller = Poller({ Prefs.address(this) }, 2000L) { result ->
+    private val poller = Poller({ Prefs.address(this) }, 1000L) { result ->
         runOnUiThread { onStats(result) }
     }
 

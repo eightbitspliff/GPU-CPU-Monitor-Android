@@ -76,9 +76,9 @@ bringt dafür LibreHardwareMonitorLib und den Installer des signierten Open-Sour
 
 Der Server ist auf möglichst wenig CPU-Last ausgelegt:
 - Keine WMI-/PowerShell-Abfragen im laufenden Betrieb (GPU über NVML bzw. `pdh.dll`).
-- Messung alle 2 s, solange App, Nest Hub oder das Server-Fenster Werte anzeigen; sonst nur
-  alle 10 s (für den Tray-Tooltip). App und Nest Hub fragen ebenfalls nur alle 2 s ab.
-- Das Sensor-Modul misst nur auf Anfrage (alle 4 s), bei NVIDIA nur die CPU.
+- Messung jede Sekunde, solange App, Nest Hub oder das Server-Fenster Werte anzeigen; sonst nur
+  alle 10 s (für den Tray-Tooltip).
+- Das Sensor-Modul misst nur auf Anfrage (alle 2 s), bei NVIDIA nur die CPU.
 - Server und Sensor-Modul laufen mit niedriger Priorität und im Effizienzmodus (EcoQoS).
 
 ## Server ohne EXE (mit Python)

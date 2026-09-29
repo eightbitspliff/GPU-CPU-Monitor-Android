@@ -41,7 +41,7 @@ from lhm_helper import LhmHelper, merge_gpus
 HTTP_PORT = int(os.environ.get("PCMON_PORT", "47811"))
 DISCOVERY_PORT = 47810
 DISCOVERY_REQUEST = b"PCMON_DISCOVER"
-SAMPLE_INTERVAL = 2.0  # App und Nest Hub fragen ebenfalls alle 2 s ab
+SAMPLE_INTERVAL = 1.0  # App und Nest Hub fragen ebenfalls jede Sekunde ab
 IDLE_INTERVAL = 10.0   # niemand schaut zu: nur alle 10 s messen (Tray-Tooltip)
 ACTIVE_TIMEOUT = 15.0  # so lange nach der letzten Abfrage wird im Sekundentakt gemessen
 IS_WINDOWS = os.name == "nt"
@@ -321,7 +321,7 @@ class Sampler(threading.Thread):
                 print("Messfehler:", e)
 
     def sample(self):
-        # Sensor-Modul (CPU-Temperatur/-Leistung) nur jede 2. Messung (alle 4 s) – ändert sich
+        # Sensor-Modul (CPU-Temperatur/-Leistung) nur jede 2. Messung (alle 2 s) – ändert sich
         # langsam; es misst parallel, das Ergebnis gilt ab dem nächsten Durchlauf
         self._n = getattr(self, "_n", 0) + 1
         if self._n % 2 == 1 or not self.active:

@@ -80,7 +80,7 @@ DASHBOARD_HTML = r"""<!doctype html>
 <script>
 (function () {
   if (/[?&]cast=1/.test(location.search)) document.body.className = "cast";
-  var CAP = 150,  // 5 Minuten bei einem Wert alle 2 s
+  var CAP = 300,  // 5 Minuten bei einem Wert pro Sekunde
       hist = { cpu: [], gpu: [] }, fails = 0;
   function $(id) { return document.getElementById(id); }
   function pct(v) { return v == null ? "–" : Math.round(v) + " %"; }
@@ -176,7 +176,7 @@ DASHBOARD_HTML = r"""<!doctype html>
   }
   tick(); setInterval(tick, 1000);
   window.addEventListener("resize", draw);
-  poll(); setInterval(poll, 2000);
+  poll(); setInterval(poll, 1000);
 })();
 </script>
 </body>
