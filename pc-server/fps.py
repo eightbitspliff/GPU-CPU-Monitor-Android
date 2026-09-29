@@ -110,13 +110,16 @@ class FpsMonitor:
         self.error = "warte auf PresentMon…"
         for line in proc.stdout:
             if cols is None:
-                if "ProcessID" in line and ("Application" in line or "ProcessName" in line):
+                low = line.lower()
+                if "processid" in low and ("application" in low or "processname" in low):
                     header = next(csv.reader([line]))
-                    cols = {name.strip(): i for i, name in enumerate(header)}
-                    i_app = cols.get("Application", cols.get("ProcessName"))
-                    i_pid = cols.get("ProcessID")
-                    i_ms = next((cols[c] for c in ("MsBetweenPresents", "FrameTime", "MsBetweenAppStart",
-                                                    "MsBetweenDisplayChange") if c in cols), None)
+                    # Spaltennamen ohne Rücksicht auf Groß-/Kleinschreibung
+                    # (PresentMon 2.x schreibt z.B. "msBetweenPresents")
+                    cols = {name.strip().lower(): i for i, name in enumerate(header)}
+                    i_app = cols.get("application", cols.get("processname"))
+                    i_pid = cols.get("processid")
+                    i_ms = next((cols[c] for c in ("msbetweenpresents", "frametime", "msbetweenappstart",
+                                                    "msbetweendisplaychange") if c in cols), None)
                     self.error = None if i_ms is not None else "unbekanntes Format: " + line.strip()[:120]
                 else:
                     self.last_message = line.strip()[:200]

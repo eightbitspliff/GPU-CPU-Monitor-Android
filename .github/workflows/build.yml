@@ -74,25 +74,6 @@ jobs:
           if (-not $asset) { $rels[0].assets | ForEach-Object { Write-Host $_.name }; throw "PresentMon-Konsolenprogramm nicht gefunden" }
           Invoke-WebRequest $asset.browser_download_url -OutFile PresentMon.exe
           (Get-Item PresentMon.exe).Length
-      - name: PresentMon prüfen (Ausgabe mit unseren Optionen)
-        shell: pwsh
-        continue-on-error: true
-        run: |
-          $args = "--output_stdout", "--no_console_stats", "--stop_existing_session", "--session_name", "PCMonitorFPS", "--v1_metrics", "--no_track_display", "--no_track_input", "--no_track_gpu"
-          $psi = New-Object System.Diagnostics.ProcessStartInfo (Resolve-Path PresentMon.exe).Path, ($args -join " ")
-          $psi.UseShellExecute = $false; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
-          $pm = [System.Diagnostics.Process]::Start($psi)
-          Start-Sleep -Seconds 6
-          $alive = -not $pm.HasExited
-          if ($alive) { $pm.Kill() }
-          Write-Host "Läuft nach 6 s noch: $alive  Exitcode: $(if ($alive) { '-' } else { $pm.ExitCode })"
-          Write-Host "--- stdout ---"; ($pm.StandardOutput.ReadToEnd() -split "`n" | Select-Object -First 12) | ForEach-Object { Write-Host $_ }
-          Write-Host "--- stderr ---"; ($pm.StandardError.ReadToEnd() -split "`n" | Select-Object -First 12) | ForEach-Object { Write-Host $_ }
-          Write-Host "--- Hilfe ---"
-          $h = New-Object System.Diagnostics.ProcessStartInfo (Resolve-Path PresentMon.exe).Path, "--help"
-          $h.UseShellExecute = $false; $h.RedirectStandardOutput = $true; $h.RedirectStandardError = $true
-          $hp = [System.Diagnostics.Process]::Start($h); $hp.WaitForExit(10000) | Out-Null
-          ($hp.StandardOutput.ReadToEnd() + $hp.StandardError.ReadToEnd()) -split "`n" | Select-Object -First 90 | ForEach-Object { Write-Host $_ }
       - name: Sensor-Modul testen
         shell: pwsh
         run: |
@@ -145,6 +126,14 @@ jobs:
             $pm = Get-Process PresentMon -ErrorAction SilentlyContinue
             Write-Host "FPS: $($r2.fps | ConvertTo-Json -Compress)  PresentMon läuft: $([bool]$pm)"
             if (-not $pm) { throw "PresentMon (FPS-Messung) läuft nicht" }
+            # Auf dem Test-Rechner zeichnet das Terminal Bilder -> es muss ein FPS-Wert kommen
+            $fpsOk = $false
+            for ($k = 0; $k -lt 8 -and -not $fpsOk; $k++) {
+              Start-Sleep -Seconds 1
+              $r3 = Invoke-RestMethod http://127.0.0.1:47811/stats -TimeoutSec 3
+              if ($r3.fps) { $fpsOk = $true; Write-Host "FPS-Wert: $($r3.fps.fps) ($($r3.fps.app))" }
+            }
+            if (-not $fpsOk) { throw "Keine FPS gemessen" }
             Write-Host "Priorität: $((Get-Process -Id $p.Id).PriorityClass)  Sensor-Modul: $((Get-Process SensorHelper -ErrorAction SilentlyContinue | Select-Object -First 1).PriorityClass)"
             if ($r.cpu.temp_note -eq "Sensor-Modul fehlt im PC-Server") { throw $r.cpu.temp_note }
             if (-not $r.cpu.cores) { throw "Auslastung je CPU-Kern fehlt" }
