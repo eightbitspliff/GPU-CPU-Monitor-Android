@@ -24,6 +24,20 @@ _IGNORE = {"dwm.exe", "pcmonitorserver.exe", "presentmon.exe", "explorer.exe",
            "searchhost.exe", "startmenuexperiencehost.exe", "textinputhost.exe"}
 
 
+# Programme, die zwar Bilder zeichnen, aber keine Spiele sind: Sie werden nur angezeigt,
+# wenn gerade kein Spiel läuft (z.B. im Fenstermodus kurz in den Browser gewechselt)
+_DESKTOP_APPS = {"chrome", "msedge", "firefox", "brave", "opera", "vivaldi", "discord",
+                 "steamwebhelper", "steam", "spotify", "claude", "code", "teams", "ms-teams",
+                 "slack", "whatsapp", "telegram", "obs64", "vlc", "explorer", "applicationframehost",
+                 "msedgewebview2", "epicgameslauncher", "battle.net", "eadesktop", "ubisoftconnect",
+                 "nvidia app", "nvidia overlay", "radeonsoftware", "pcmonitorserver"}
+
+
+def _app_key(name):
+    n = (name or "").lower()
+    return n[:-4] if n.endswith(".exe") else n
+
+
 def presentmon_path():
     for p in (os.path.join(HERE, "PresentMon.exe"), os.path.join(HERE, "presentmon", "PresentMon.exe")):
         if os.path.isfile(p):
@@ -54,6 +68,7 @@ class FpsMonitor:
         self._names = {}
         self.error = None
         self.last_message = ""
+        self._last_fg = None
 
     @property
     def available(self):
@@ -149,6 +164,7 @@ class FpsMonitor:
         now = time.monotonic()
         fg = _foreground_pid()
         best = None
+        results = {}
         with self._lock:
             for pid, q in list(self._frames.items()):
                 while q and now - q[0][0] > 3.0:
@@ -168,11 +184,24 @@ class FpsMonitor:
                         break
                 if not total:
                     continue
-                fps = n * 1000.0 / total
-                score = (pid == fg, len(q))
-                if best is None or score > best[0]:
-                    best = (score, fps, name)
-        if best is None:
+                results[pid] = (n * 1000.0 / total, name, len(q))
+        if not results:
             return None
+        # 1. Programm im Vordergrund (Vollbild oder Fenster), 2. zuletzt gespieltes
+        #    Programm im Vordergrund, solange es noch zeichnet (Fenstermodus: kurz in
+        #    Browser/Discord gewechselt), 3. Programm mit den meisten Bildern
+        games = {p for p, r in results.items() if _app_key(r[1]) not in _DESKTOP_APPS}
+        if fg in games:
+            self._last_fg = fg
+            pid = fg
+        elif self._last_fg in games:
+            pid = self._last_fg
+        elif games:
+            pid = max(games, key=lambda p: results[p][2])
+        elif fg in results:
+            pid = fg  # kein Spiel: dann eben das Vordergrund-Programm (z.B. Video im Browser)
+        else:
+            pid = max(results, key=lambda p: results[p][2])
+        best = (None, results[pid][0], results[pid][1])
         app = best[2][:-4] if best[2].lower().endswith(".exe") else best[2]
         return {"fps": round(best[1]), "app": app}
