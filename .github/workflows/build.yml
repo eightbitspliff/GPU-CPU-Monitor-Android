@@ -88,6 +88,8 @@ jobs:
       - name: EXE testen (startet im Tray, liefert Werte)
         shell: pwsh
         run: |
+          # verwaistes Skript einer alten Version nachstellen – die EXE muss es beenden
+          $old = Start-Process powershell -ArgumentList "-NoProfile", "-Command", "while (`$true) { `$x = 'GPUPerformanceCounters_GPUEngine'; Start-Sleep 1 }" -PassThru -WindowStyle Hidden
           $p = Start-Process -FilePath dist\PCMonitorServer.exe -ArgumentList "--tray" -PassThru
           $r = $null
           for ($i = 0; $i -lt 30 -and -not $r; $i++) {
@@ -97,6 +99,9 @@ jobs:
           }
           try {
             if (-not $r) { throw "Server hat nicht geantwortet" }
+            $old.Refresh()
+            if (-not $old.HasExited) { throw "Altes Hintergrundskript wurde nicht beendet" }
+            Write-Host "Altes Hintergrundskript beendet: ja"
             Write-Host "CPU $($r.cpu.usage) %  RAM $($r.ram.usage) %  GPU-Quelle $($r.gpu_source)"
             Write-Host "Kerne: $($r.cpu.cores.Count)  CPU-Temp: $($r.cpu.temp_c)  CPU-Leistung: $($r.cpu.power_w) W"
             Write-Host "Temp-Hinweis: $($r.cpu.temp_note)  GPUs: $($r.gpus | ConvertTo-Json -Compress)"

@@ -491,10 +491,42 @@ def save_resources():
         pass
 
 
+# Eindeutige Stellen aus den PowerShell-Hintergrundskripten früherer Versionen.
+# Diese liefen nach dem Beenden des alten Servers weiter und belasteten den
+# WMI-Anbieterhost dauerhaft; die aktuelle Version startet kein PowerShell mehr.
+_OLD_SCRIPT_MARKERS = (
+    "GPUPerformanceCounters_GPUEngine",            # GPU-Auslastung (AMD/Intel)
+    "{83DA6326-97A6-4088-9453-A1923F573B29} 15",   # Bluetooth-Geräte
+    "SensorType='Temperature'",                    # CPU-Temperatur über LibreHardwareMonitor
+    "Win32_PhysicalMemory",                        # RAM-Bandbreite
+)
+
+
+def kill_old_helpers():
+    """Beendet verwaiste PowerShell-Skripte älterer PC-Monitor-Versionen (nur diese)."""
+    if not IS_WINDOWS:
+        return 0
+    killed = 0
+    for proc in psutil.process_iter(["name", "cmdline"]):
+        try:
+            if (proc.info["name"] or "").lower() not in ("powershell.exe", "pwsh.exe"):
+                continue
+            cmd = " ".join(proc.info["cmdline"] or [])
+            if any(m in cmd for m in _OLD_SCRIPT_MARKERS):
+                proc.kill()
+                killed += 1
+        except (psutil.Error, OSError):
+            pass
+    if killed:
+        print(f"{killed} alte Hintergrundskripte beendet")
+    return killed
+
+
 def start_backend():
     """Startet Messung, UDP-Suche und HTTP-Server im Hintergrund."""
     global sampler, caster
     save_resources()
+    kill_old_helpers()
     sampler = Sampler()
     sampler.sample()
     sampler.start()
