@@ -30,7 +30,7 @@ hinter das Ziel ` --tray` schreiben – dann startet er direkt unsichtbar im Tra
 ## App-Funktionen
 
 - Große Anzeigen für **CPU** und **GPU** (Auslastung in %), dazu Takt, Temperatur, Stromverbrauch
-- **WLAN** (Netzwerk, Empfang, Band), verbundene **Bluetooth**-Geräte (mit Akkustand) und aktueller **Netzwerk-Traffic**
+- **WLAN** (Netzwerk, Empfang, Band) und aktueller **Netzwerk-Traffic**
 - Verlaufsdiagramm der letzten 2 Minuten
 - RAM- und VRAM-Belegung
 - Bildschirm bleibt an (z.B. als Zweitdisplay neben dem PC), abschaltbar im Menü ⋮
@@ -72,6 +72,17 @@ bringt dafür LibreHardwareMonitorLib und den Installer des signierten Open-Sour
 - Die EXE startet deshalb mit Administratorrechten (Windows fragt beim Start nach).
 - Beim ersten Start fragt das Server-Fenster, ob PawnIO installiert werden soll; später
   geht das über den Knopf **„CPU-Temperatur aktivieren“** im Server-Fenster.
+
+## Ressourcenverbrauch
+
+Der Server ist auf möglichst wenig Last ausgelegt:
+- Keine WMI-/PowerShell-Abfragen im laufenden Betrieb (Leistungsindikatoren direkt über `pdh.dll`,
+  WLAN über die Native-WiFi-API, GPU über NVML).
+- Gemessen wird im Sekundentakt nur, solange App, Nest Hub oder das Server-Fenster Werte anzeigen;
+  sonst nur alle 10 s (für den Tray-Tooltip).
+- Das Sensor-Modul misst nur auf Anfrage, bei NVIDIA nur die CPU; CPU-Temperatur/-Leistung alle 2 s,
+  WLAN-Empfang alle 5 s.
+- Server und Sensor-Modul laufen mit niedriger Priorität und im Effizienzmodus (EcoQoS).
 
 ## Server ohne EXE (mit Python)
 

@@ -38,7 +38,6 @@ class MainActivity : Activity() {
     private lateinit var vramBar: BarView
     private lateinit var wifiText: TextView
     private lateinit var wifiBar: BarView
-    private lateinit var btText: TextView
     private lateinit var trafficText: TextView
     private lateinit var searchButton: Button
 
@@ -73,7 +72,6 @@ class MainActivity : Activity() {
         vramBar = findViewById(R.id.vramBar)
         wifiText = findViewById(R.id.wifiText)
         wifiBar = findViewById(R.id.wifiBar)
-        btText = findViewById(R.id.btText)
         trafficText = findViewById(R.id.trafficText)
         searchButton = findViewById(R.id.searchButton)
 
@@ -231,16 +229,6 @@ class MainActivity : Activity() {
             ).joinToString("  ·  ")
         }
         wifiBar.setValue(if (w?.connected == true) w.signal else null)
-
-        val bt = s.bluetooth
-        btText.text = when {
-            bt == null -> "Bluetooth –"
-            !bt.available && bt.devices.isEmpty() -> "Bluetooth  aus / kein Adapter"
-            bt.devices.isEmpty() -> "Bluetooth  kein Gerät verbunden"
-            else -> "Bluetooth  " + bt.devices.joinToString(",  ") { d ->
-                d.name + (d.battery?.let { " (${Math.round(it)} %)" } ?: "")
-            }
-        }
 
         val t = s.traffic
         trafficText.text = if (t == null) "Traffic –"

@@ -1,25 +1,29 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading;
 using LibreHardwareMonitor.Hardware;
 using Microsoft.Win32;
 
-// Gibt jede Sekunde eine JSON-Zeile aus, z.B.
+// Gibt je Anfrage eine JSON-Zeile aus, z.B.
 // {"admin":true,"pawnio":true,"cpu_temp":54.5,"cpu_power":88.2,"gpus":[{"name":"AMD Radeon RX 7800 XT","vendor":"amd",
 //  "power_w":212.3,"clock_mhz":2430,"temp_c":61,"usage":97}]}
-// Beendet sich, sobald der PC-Server die Pipe schließt.
+// Eine Messung je Zeile auf stdin; beendet sich, sobald der PC-Server die Pipe schließt.
 static class Program
 {
     static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
-    static int Main()
+    static int Main(string[] args)
     {
-        var computer = new Computer { IsCpuEnabled = true, IsGpuEnabled = true };
+        SaveResources();
+        // --no-gpu: GPU-Werte kommen schon vom NVIDIA-Treiber (NVML), nicht doppelt abfragen
+        bool gpu = !args.Contains("--no-gpu");
+        var computer = new Computer { IsCpuEnabled = true, IsGpuEnabled = gpu };
         try
         {
             computer.Open();
@@ -33,7 +37,9 @@ static class Program
         bool pawnIo = PawnIoInstalled();
         try
         {
-            while (true)
+            // Misst nur auf Anfrage: je Zeile auf stdin eine Messung. So arbeitet das
+            // Modul nur, wenn der PC-Server gerade Werte braucht. stdin zu = Ende.
+            while (Console.In.ReadLine() != null)
             {
                 string line;
                 try
@@ -46,7 +52,6 @@ static class Program
                 }
                 Console.Out.WriteLine(line);
                 Console.Out.Flush();
-                Thread.Sleep(1000);
             }
         }
         catch (Exception)
@@ -58,6 +63,25 @@ static class Program
             try { computer.Close(); } catch { }
         }
         return 0;
+    }
+
+    // Niedrige Priorität und Effizienzmodus (EcoQoS, Windows 11): stört Spiele/Programme nicht.
+    [StructLayout(LayoutKind.Sequential)]
+    struct PowerThrottlingState { public uint Version, ControlMask, StateMask; }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool SetProcessInformation(IntPtr process, int infoClass, ref PowerThrottlingState info, int size);
+
+    static void SaveResources()
+    {
+        try { Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
+        try
+        {
+            var st = new PowerThrottlingState { Version = 1, ControlMask = 1, StateMask = 1 };
+            SetProcessInformation(Process.GetCurrentProcess().Handle, 4 /* ProcessPowerThrottling */,
+                ref st, Marshal.SizeOf(typeof(PowerThrottlingState)));
+        }
+        catch { }
     }
 
     static string Sample(Computer computer, bool admin, bool pawnIo)

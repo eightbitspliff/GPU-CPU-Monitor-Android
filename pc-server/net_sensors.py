@@ -1,23 +1,19 @@
-"""WLAN-Empfang, verbundene Bluetooth-Geräte und aktueller Netzwerk-Traffic.
+"""WLAN-Empfang und aktueller Netzwerk-Traffic.
 
 Windows: WLAN über die Native-WiFi-API (wlanapi.dll, sprachunabhängig),
-         Bluetooth über die Geräteeigenschaften (PowerShell im Hintergrund).
-Linux:   /proc/net/wireless, iwgetid und bluetoothctl, soweit vorhanden.
+Linux:   /proc/net/wireless und iwgetid, soweit vorhanden.
 Traffic: psutil (Bytes je Sekunde der WLAN-Karte, sonst der aktivsten Verbindung).
 """
 
-import json
 import os
 import re
 import shutil
 import subprocess
-import threading
 import time
 
 import psutil
 
 IS_WINDOWS = os.name == "nt"
-NO_WINDOW = 0x08000000 if IS_WINDOWS else 0
 
 _WIFI_NAME = re.compile(r"wlan|wi-?fi|wireless|funk|^wl", re.IGNORECASE)
 _VIRTUAL_NAME = re.compile(r"vethernet|virtual|vmware|vbox|hyper-v|docker|"
@@ -173,90 +169,6 @@ def _linux_wifi():
     return None
 
 
-# --------------------------------------------------------------------------- Bluetooth
-
-class _BluetoothWatcher(threading.Thread):
-    """Fragt alle paar Sekunden die verbundenen Bluetooth-Geräte ab."""
-
-    # DEVPKEY_Device_IsConnected bzw. Akkustand (Bluetooth-Geräte melden ihn dort)
-    _PS_SCRIPT = r"""
-$ErrorActionPreference = 'SilentlyContinue'
-$conn = '{83DA6326-97A6-4088-9453-A1923F573B29} 15'
-$batt = '{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2'
-while ($true) {
-  $all = Get-PnpDevice
-  $radio = $all | Where-Object { $_.Class -eq 'Bluetooth' -and $_.InstanceId -notmatch '^BTH' -and $_.Status -eq 'OK' }
-  $devs = $all | Where-Object { $_.InstanceId -match '^BTH(ENUM|LE)\\DEV_([0-9A-F]{12})' }
-  $out = @()
-  foreach ($d in $devs) {
-    $mac = ([regex]::Match($d.InstanceId, 'DEV_([0-9A-F]{12})')).Groups[1].Value
-    $c = (Get-PnpDeviceProperty -InstanceId $d.InstanceId -KeyName $conn).Data
-    if ($c -ne $true) { continue }
-    $b = $null
-    foreach ($s in ($all | Where-Object { $_.InstanceId -match $mac })) {
-      $v = (Get-PnpDeviceProperty -InstanceId $s.InstanceId -KeyName $batt).Data
-      if ($v -ne $null) { $b = [int]$v; break }
-    }
-    if ($out | Where-Object { $_.mac -eq $mac }) { continue }
-    $out += [pscustomobject]@{ name = $d.FriendlyName; mac = $mac; battery = $b; le = ($d.InstanceId -match '^BTHLE') }
-  }
-  $j = [pscustomobject]@{ available = [bool]$radio; devices = @($out) } | ConvertTo-Json -Compress -Depth 4
-  [Console]::Out.WriteLine($j)
-  [Console]::Out.Flush()
-  Start-Sleep -Seconds 5
-}
-"""
-
-    def __init__(self):
-        super().__init__(daemon=True)
-        self.value = None
-
-    def run(self):
-        if IS_WINDOWS:
-            self._run_windows()
-        elif shutil.which("bluetoothctl"):
-            while True:
-                self.value = self._linux()
-                time.sleep(5)
-
-    def _run_windows(self):
-        try:
-            proc = subprocess.Popen(
-                ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-                 "-Command", self._PS_SCRIPT],
-                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                text=True, encoding="utf-8", errors="replace", creationflags=NO_WINDOW)
-        except Exception:
-            return
-        for line in proc.stdout:
-            try:
-                d = json.loads(line)
-            except ValueError:
-                continue
-            devices = d.get("devices") or []
-            if isinstance(devices, dict):  # PowerShell macht aus einer 1er-Liste ein Objekt
-                devices = [devices]
-            self.value = {
-                "available": bool(d.get("available")),
-                "devices": [{"name": x.get("name") or x.get("mac") or "Gerät",
-                             "battery": x.get("battery")} for x in devices],
-            }
-
-    @staticmethod
-    def _linux():
-        try:
-            out = subprocess.check_output(["bluetoothctl", "devices", "Connected"], text=True,
-                                          timeout=3, stderr=subprocess.DEVNULL)
-        except Exception:
-            return None
-        devices = []
-        for line in out.splitlines():
-            m = re.match(r"Device ([0-9A-F:]{17}) (.+)", line.strip())
-            if m:
-                devices.append({"name": m.group(2), "battery": None})
-        return {"available": True, "devices": devices}
-
-
 # --------------------------------------------------------------------------- Gesamt
 
 class NetSensors:
@@ -267,14 +179,22 @@ class NetSensors:
                 self._wlan = _WlanApi()
             except Exception as e:
                 print("WLAN-Abfrage nicht verfügbar:", e)
-        self._bt = _BluetoothWatcher()
-        self._bt.start()
         self._last = None  # (Zeit, {nic: (gesendet, empfangen)})
+        self._wifi_cache = None
 
     def read(self):
-        return {"wifi": self._wifi(), "bluetooth": self._bt.value, "traffic": self._traffic()}
+        return {"wifi": self._wifi(), "traffic": self._traffic()}
 
     def _wifi(self):
+        # WLAN-Empfang ändert sich langsam: nur alle 5 s neu abfragen
+        now = time.monotonic()
+        if self._wifi_cache is not None and now - self._wifi_cache[0] < 5:
+            return self._wifi_cache[1]
+        value = self._wifi_now()
+        self._wifi_cache = (now, value)
+        return value
+
+    def _wifi_now(self):
         try:
             if self._wlan is not None:
                 return self._wlan.read()

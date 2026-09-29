@@ -77,7 +77,6 @@ DASHBOARD_HTML = r"""<!doctype html>
       <div class="row"><span id="ramT">RAM –</span><div class="bar"><div id="ramB" style="background:var(--ram)"></div></div></div>
       <div class="row"><span id="vramT">VRAM –</span><div class="bar"><div id="vramB" style="background:var(--gpu)"></div></div></div>
       <div class="row net"><span id="wifiT">WLAN –</span><div class="bar"><div id="wifiB" style="background:var(--net)"></div></div></div>
-      <div class="row small" id="btT">Bluetooth –</div>
       <div class="row small" id="netT">Traffic –</div>
     </div>
   </div>
@@ -166,7 +165,7 @@ DASHBOARD_HTML = r"""<!doctype html>
     return Math.round(bps / 1e3) + " kBit/s";
   }
   function renderNet(n) {
-    var w = n.wifi, bt = n.bluetooth, t = n.traffic, parts;
+    var w = n.wifi, t = n.traffic, parts;
     if (!w) { $("wifiT").textContent = "WLAN –"; $("wifiB").style.width = "0"; }
     else if (!w.connected) { $("wifiT").textContent = "WLAN  nicht verbunden"; $("wifiB").style.width = "0"; }
     else {
@@ -176,11 +175,6 @@ DASHBOARD_HTML = r"""<!doctype html>
       $("wifiT").textContent = "WLAN  " + parts.join("  ·  ");
       $("wifiB").style.width = (w.signal || 0) + "%";
     }
-    var devs = (bt && bt.devices) || [];
-    $("btT").textContent = !bt ? "Bluetooth –"
-      : devs.length ? "BT  " + devs.map(function (d) {
-          return d.name + (d.battery != null ? " (" + Math.round(d.battery) + " %)" : ""); }).join(",  ")
-      : bt.available ? "BT  kein Gerät verbunden" : "BT  aus / kein Adapter";
     $("netT").textContent = !t ? "Traffic –"
       : (t.wifi ? "WLAN" : t.iface) + "  ↓ " + rate(t.down_bps) + "   ↑ " + rate(t.up_bps);
   }

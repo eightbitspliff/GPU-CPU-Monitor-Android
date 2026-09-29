@@ -24,10 +24,6 @@ data class WifiStats(
     val standard: String?,
 )
 
-data class BtDevice(val name: String, val battery: Double?)
-
-data class BtStats(val available: Boolean, val devices: List<BtDevice>)
-
 data class TrafficStats(val iface: String, val isWifi: Boolean, val downBps: Double, val upBps: Double)
 
 data class PcStats(
@@ -48,7 +44,6 @@ data class PcStats(
     val ramUsage: Double,
     val gpus: List<GpuStats>,
     val wifi: WifiStats?,
-    val bluetooth: BtStats?,
     val traffic: TrafficStats?,
 ) {
     val gpu: GpuStats? get() = gpus.firstOrNull()
@@ -94,17 +89,6 @@ object StatsClient {
         standard = w.str("standard"),
     )
 
-    private fun parseBt(b: JSONObject): BtStats {
-        val arr = b.optJSONArray("devices")
-        val devices = buildList {
-            if (arr != null) for (i in 0 until arr.length()) {
-                val d = arr.optJSONObject(i) ?: continue
-                add(BtDevice(d.str("name") ?: "Gerät", d.num("battery")))
-            }
-        }
-        return BtStats(b.optBoolean("available", devices.isNotEmpty()), devices)
-    }
-
     private fun parse(j: JSONObject): PcStats {
         val cpu = j.getJSONObject("cpu")
         val ram = j.getJSONObject("ram")
@@ -145,7 +129,6 @@ object StatsClient {
             ramUsage = ram.num("usage") ?: 0.0,
             gpus = gpus,
             wifi = net?.optJSONObject("wifi")?.let { parseWifi(it) },
-            bluetooth = net?.optJSONObject("bluetooth")?.let { parseBt(it) },
             traffic = net?.optJSONObject("traffic")?.let { t ->
                 TrafficStats(t.optString("iface", "Netzwerk"), t.optBoolean("wifi", false),
                     t.num("down_bps") ?: 0.0, t.num("up_bps") ?: 0.0)

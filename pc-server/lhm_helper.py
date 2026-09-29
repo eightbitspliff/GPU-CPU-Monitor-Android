@@ -1,5 +1,6 @@
 """Startet den mitgelieferten SensorHelper (LibreHardwareMonitorLib) unter Windows
-und stellt dessen Werte bereit: CPU-Temperatur, GPU-Leistungsaufnahme, -Takt, -Temperatur.
+und stellt dessen Werte bereit. Das Modul misst nur auf Anfrage (poke), damit es
+keine Rechenzeit braucht, solange niemand die Werte ansieht: CPU-Temperatur, GPU-Leistungsaufnahme, -Takt, -Temperatur.
 
 Für die CPU-Temperatur braucht es Administratorrechte und den Treiber PawnIO.
 Die GPU-Werte kommen auch ohne beides.
@@ -44,7 +45,8 @@ def is_admin():
 
 
 class LhmHelper:
-    def __init__(self):
+    def __init__(self, with_gpu=True):
+        self.with_gpu = with_gpu
         self.data = {}
         self.error = None
         self._proc = None
@@ -64,9 +66,11 @@ class LhmHelper:
             try:
                 with self._lock:
                     self._proc = subprocess.Popen(
-                        [self.path], cwd=os.path.dirname(self.path),
-                        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                        [self.path] + ([] if self.with_gpu else ["--no-gpu"]),
+                        cwd=os.path.dirname(self.path),
+                        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                         text=True, encoding="utf-8", errors="replace", creationflags=NO_WINDOW)
+                self.poke()  # erste Messung sofort (Admin-/Treiber-Status fürs Fenster)
                 for line in self._proc.stdout:
                     try:
                         d = json.loads(line)
@@ -83,6 +87,18 @@ class LhmHelper:
             self.data = {}
             failures = 0 if time.time() - started > 60 else failures + 1
             time.sleep(2)
+
+    def poke(self):
+        """Eine Messung anfordern. Das Modul misst nur auf Anfrage, das Ergebnis
+        kommt asynchron über stdout (und ist beim nächsten Abruf da)."""
+        proc = self._proc
+        if proc is None or proc.stdin is None:
+            return
+        try:
+            proc.stdin.write("\n")
+            proc.stdin.flush()
+        except Exception:
+            pass
 
     def restart(self):
         """Nach der Treiberinstallation neu starten, damit er PawnIO findet."""

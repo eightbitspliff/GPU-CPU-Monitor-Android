@@ -16,6 +16,7 @@ Start:  python pc_monitor_server.py   (oder die fertige PCMonitorServer.exe)
 import json
 import os
 import platform
+import re
 import shutil
 import socket
 import subprocess
@@ -42,6 +43,8 @@ HTTP_PORT = int(os.environ.get("PCMON_PORT", "47811"))
 DISCOVERY_PORT = 47810
 DISCOVERY_REQUEST = b"PCMON_DISCOVER"
 SAMPLE_INTERVAL = 1.0
+IDLE_INTERVAL = 10.0   # niemand schaut zu: nur alle 10 s messen (Tray-Tooltip)
+ACTIVE_TIMEOUT = 15.0  # so lange nach der letzten Abfrage wird im Sekundentakt gemessen
 IS_WINDOWS = os.name == "nt"
 NO_WINDOW = 0x08000000 if IS_WINDOWS else 0  # CREATE_NO_WINDOW
 
@@ -70,6 +73,33 @@ def cpu_name():
 
 # --------------------------------------------------------------------------- GPU
 
+def _gpu_name_from_registry():
+    """Name der Grafikkarte aus der Registry (Grafikkarte vor integrierter Grafik)."""
+    if not IS_WINDOWS:
+        return None
+    try:
+        import winreg
+        base = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
+        names = []
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base) as k:
+            for i in range(winreg.QueryInfoKey(k)[0]):
+                sub = winreg.EnumKey(k, i)
+                if not sub.isdigit():
+                    continue
+                try:
+                    with winreg.OpenKey(k, sub) as sk:
+                        names.append(winreg.QueryValueEx(sk, "DriverDesc")[0])
+                except OSError:
+                    pass
+    except OSError:
+        return None
+    names = [n for n in names if n and "basic" not in n.lower() and "virtual" not in n.lower()]
+    for n in names:
+        if re.search(r"NVIDIA|Radeon|AMD|Arc", n, re.I):
+            return n
+    return names[0] if names else None
+
+
 class GpuReader:
     """Liest die GPU-Auslastung. Probiert der Reihe nach:
     NVML (NVIDIA), nvidia-smi, Windows-Leistungsindikatoren (AMD/Intel/alle),
@@ -81,7 +111,7 @@ class GpuReader:
         self._nvml_handles = []
         self._nvml_energy = {}
         self._win_value = None
-        self._win_proc = None
+        self._win_pdh = None
 
         if self._init_nvml():
             self.source = "nvml"
@@ -199,68 +229,37 @@ class GpuReader:
         return result or None
 
     # Windows: Leistungsindikatoren (funktioniert für jede GPU) ---------------
-    # Die WMI-Klasse hat sprachunabhängige Namen (anders als Get-Counter).
-    _PS_SCRIPT = r"""
-$ErrorActionPreference = 'SilentlyContinue'
-$vc = Get-CimInstance Win32_VideoController
-$name = ($vc | Where-Object { $_.Name -match 'NVIDIA|Radeon|AMD|Arc' } | Select-Object -First 1).Name
-if (-not $name) { $name = ($vc | Select-Object -First 1).Name }
-[Console]::Out.WriteLine("NAME:" + $name)
-[Console]::Out.Flush()
-while ($true) {
-  $eng = Get-CimInstance Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine
-  $max = 0
-  if ($eng) {
-    $groups = $eng | Group-Object { ($_.Name -split 'engtype_')[-1] }
-    foreach ($g in $groups) {
-      $s = ($g.Group | Measure-Object -Property UtilizationPercentage -Sum).Sum
-      if ($s -gt $max) { $max = $s }
-    }
-  }
-  $mem = Get-CimInstance Win32_PerfFormattedData_GPUPerformanceCounters_GPUAdapterMemory
-  $used = 0
-  if ($mem) { $used = ($mem | Measure-Object -Property DedicatedUsage -Sum).Sum }
-  # Takt gibt Windows selbst nicht her - nur über LibreHardwareMonitor/OpenHardwareMonitor
-  $clock = ""
-  foreach ($ns in 'root/LibreHardwareMonitor', 'root/OpenHardwareMonitor') {
-    $c = Get-CimInstance -Namespace $ns -ClassName Sensor -Filter "SensorType='Clock'" |
-         Where-Object { $_.Identifier -match 'gpu' -and $_.Name -match 'Core' } | Select-Object -First 1
-    if ($c) { $clock = [math]::Round([double]$c.Value); break }
-  }
-  [Console]::Out.WriteLine("VAL:" + [math]::Min(100, $max) + ";" + $used + ";" + $clock)
-  [Console]::Out.Flush()
-  Start-Sleep -Milliseconds 800
-}
-"""
-
+    # Direkt über pdh.dll statt WMI/PowerShell – spart viel CPU im WMI-Anbieterhost.
     def _init_windows_counters(self):
         try:
-            self._win_proc = subprocess.Popen(
-                ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-                 "-Command", self._PS_SCRIPT],
-                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
-                creationflags=NO_WINDOW)
+            from cpu_sensors import _Pdh
+            self._win_pdh = _Pdh({
+                "engine": r"\GPU Engine(*)\Utilization Percentage",
+                "memory": r"\GPU Adapter Memory(*)\Dedicated Usage",
+            })
         except Exception:
             return False
-        self._win_value = {"name": "GPU", "usage": None, "mem_used_mb": None,
-                           "mem_total_mb": None, "temp_c": None, "power_w": None,
-                   "clock_mhz": None}
-        threading.Thread(target=self._pump_windows, daemon=True).start()
+        self._win_value = {"name": _gpu_name_from_registry() or "GPU", "usage": None,
+                           "mem_used_mb": None, "mem_total_mb": None, "temp_c": None,
+                           "power_w": None, "clock_mhz": None}
         return True
 
-    def _pump_windows(self):
-        for line in self._win_proc.stdout:
-            line = line.strip()
-            if line.startswith("NAME:"):
-                self._win_value["name"] = line[5:] or "GPU"
-            elif line.startswith("VAL:"):
-                try:
-                    usage, used, clock = (line[4:].split(";") + [""])[:3]
-                    self._win_value["usage"] = round(float(usage.replace(",", ".")), 1)
-                    self._win_value["mem_used_mb"] = round(float(used.replace(",", ".")) / 1048576)
-                    self._win_value["clock_mhz"] = float(clock) if clock.strip() else None
-                except ValueError:
-                    pass
+    def _read_windows_counters(self):
+        v = dict(self._win_value)
+        try:
+            self._win_pdh.collect()
+            per_type = {}
+            for name, val in self._win_pdh.values("engine").items():
+                t = name.rsplit("engtype_", 1)[-1]
+                per_type[t] = per_type.get(t, 0.0) + val
+            if per_type:
+                v["usage"] = round(min(100.0, max(per_type.values())), 1)
+            mem = self._win_pdh.values("memory")
+            if mem:
+                v["mem_used_mb"] = round(sum(mem.values()) / 1048576)
+        except Exception:
+            pass
+        return v
 
     # Linux: AMD über sysfs ---------------------------------------------------
     def _read_sysfs(self):
@@ -313,7 +312,7 @@ while ($true) {
         if self.source == "nvidia-smi":
             return self._read_nvidia_smi() or []
         if self.source == "windows-counters":
-            return [dict(self._win_value)]
+            return [self._read_windows_counters()]
         if self.source == "sysfs":
             return self._read_sysfs() or []
         return []
@@ -327,22 +326,42 @@ class Sampler(threading.Thread):
         self.lock = threading.Lock()
         self.gpu = GpuReader()
         self.cpu_name = cpu_name()
-        self.lhm = LhmHelper()
+        self.lhm = LhmHelper(with_gpu=self.gpu.source != "nvml")
         self.cpu_sensors = CpuSensors(self.lhm)
         self.net = NetSensors()
         self.hostname = socket.gethostname()
         self.data = {}
+        self.last_request = time.monotonic()
+        self.gui_visible = False
+        self._wake = threading.Event()
         psutil.cpu_percent(percpu=True)  # erste Messung initialisieren
+
+    def touch(self):
+        """Ein Client (App, Nest Hub, Browser) hat Werte abgerufen."""
+        idle = not self.active
+        self.last_request = time.monotonic()
+        if idle:
+            self._wake.set()  # sofort wieder im Sekundentakt messen
+
+    @property
+    def active(self):
+        """Messen im Sekundentakt nur, solange jemand zuschaut."""
+        return self.gui_visible or time.monotonic() - self.last_request < ACTIVE_TIMEOUT
 
     def run(self):
         while True:
-            time.sleep(SAMPLE_INTERVAL)
+            self._wake.wait(SAMPLE_INTERVAL if self.active else IDLE_INTERVAL)
+            self._wake.clear()
             try:
                 self.sample()
             except Exception as e:
                 print("Messfehler:", e)
 
     def sample(self):
+        # Sensor-Modul (CPU-Temperatur/-Leistung) alle 2 s; misst parallel, Ergebnis gilt ab dem nächsten Durchlauf
+        self._n = getattr(self, "_n", 0) + 1
+        if self._n % 2 == 1 or not self.active:
+            self.lhm.poke()
         cores = psutil.cpu_percent(percpu=True)
         total = round(sum(cores) / len(cores), 1) if cores else 0.0
         core_freqs, freq_mhz, temp_c = self.cpu_sensors.read()
@@ -400,6 +419,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         url = urlparse(self.path)
         if url.path == "/stats":
+            sampler.touch()
             self._json(sampler.snapshot())
         elif url.path in ("/", "/index.html"):
             self._send(200, DASHBOARD_HTML, "text/html; charset=utf-8")
@@ -461,9 +481,36 @@ def local_ips():
     return sorted(ips)
 
 
+def save_resources():
+    """Niedrige Priorität und Effizienzmodus (EcoQoS, Windows 11) für diesen Prozess;
+    Kindprozesse (Sensor-Modul) erben die niedrige Priorität."""
+    try:
+        p = psutil.Process()
+        p.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS if IS_WINDOWS else 10)
+    except Exception:
+        pass
+    if not IS_WINDOWS:
+        return
+    try:
+        import ctypes
+
+        class PowerThrottlingState(ctypes.Structure):
+            _fields_ = [("Version", ctypes.c_ulong), ("ControlMask", ctypes.c_ulong),
+                        ("StateMask", ctypes.c_ulong)]
+
+        st = PowerThrottlingState(1, 1, 1)  # PROCESS_POWER_THROTTLING_EXECUTION_SPEED
+        k = ctypes.windll.kernel32
+        k.GetCurrentProcess.restype = ctypes.c_void_p
+        k.SetProcessInformation.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_ulong]
+        k.SetProcessInformation(k.GetCurrentProcess(), 4, ctypes.byref(st), ctypes.sizeof(st))
+    except Exception:
+        pass
+
+
 def start_backend():
     """Startet Messung, UDP-Suche und HTTP-Server im Hintergrund."""
     global sampler, caster
+    save_resources()
     sampler = Sampler()
     sampler.sample()
     sampler.start()

@@ -68,12 +68,6 @@ def _net_text(n):
             lines.append("WLAN: " + " · ".join(parts))
         else:
             lines.append("WLAN: nicht verbunden")
-    bt = n.get("bluetooth")
-    if bt:
-        devs = bt.get("devices") or []
-        lines.append("Bluetooth: " + (", ".join(
-            d["name"] + (f" ({round(d['battery'])} %)" if d.get("battery") is not None else "") for d in devs)
-            if devs else "kein Gerät verbunden"))
     t = n.get("traffic")
     if t:
         lines.append(f"{'WLAN' if t.get('wifi') else t.get('iface')}: ↓ {_rate(t['down_bps'])}  ↑ {_rate(t['up_bps'])}")
@@ -233,6 +227,8 @@ def run(sampler, caster, ips, port, start_hidden=False):
         root.after(0, _show)
 
     def _show():
+        sampler.touch()
+        sampler.gui_visible = True
         root.deiconify()
         root.state("normal")
         root.lift()
@@ -265,6 +261,10 @@ def run(sampler, caster, ips, port, start_hidden=False):
 
     # ------------------------------------------------------- Live-Werte
     def refresh():
+        visible = root.state() not in ("withdrawn", "iconic")
+        if visible and not sampler.gui_visible:
+            sampler.touch()  # weckt die Messung sofort
+        sampler.gui_visible = visible
         d = sampler.snapshot()
         if d:
             cpu = d["cpu"]["usage"]
@@ -293,7 +293,7 @@ def run(sampler, caster, ips, port, start_hidden=False):
                 tray.title = f"PC Monitor – CPU {_pct(cpu)} · GPU {_pct(gpu)}"
             except Exception:
                 pass
-        root.after(1000, refresh)
+        root.after(1000 if visible else 5000, refresh)  # verborgen: nur Tooltip, seltener
 
     refresh()
     if start_hidden:

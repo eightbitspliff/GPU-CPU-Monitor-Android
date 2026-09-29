@@ -67,9 +67,10 @@ jobs:
           $p.StartInfo.UseShellExecute = $false
           $p.StartInfo.RedirectStandardOutput = $true
           $p.StartInfo.RedirectStandardError = $true
+          $p.StartInfo.RedirectStandardInput = $true
           [void]$p.Start()
           $lines = @()
-          for ($i = 0; $i -lt 3; $i++) { $lines += $p.StandardOutput.ReadLine() }
+          for ($i = 0; $i -lt 3; $i++) { $p.StandardInput.WriteLine(""); $lines += $p.StandardOutput.ReadLine() }
           $p.Kill()
           $lines | ForEach-Object { Write-Host $_ }
           Write-Host "stderr: $($p.StandardError.ReadToEnd())"
@@ -105,6 +106,7 @@ jobs:
             Start-Sleep -Seconds 3
             $r2 = Invoke-RestMethod http://127.0.0.1:47811/stats -TimeoutSec 3
             Write-Host "Netzwerk: $($r2.net | ConvertTo-Json -Compress -Depth 5)"
+            Write-Host "Priorität: $((Get-Process -Id $p.Id).PriorityClass)  Sensor-Modul: $((Get-Process SensorHelper -ErrorAction SilentlyContinue | Select-Object -First 1).PriorityClass)"
             if (-not $r2.net.traffic) { throw "Netzwerk-Traffic fehlt" }
             if ($r.cpu.temp_note -eq "Sensor-Modul fehlt im PC-Server") { throw $r.cpu.temp_note }
             if (-not $r.cpu.core_freq_mhz -or $r.cpu.core_freq_mhz.Count -ne $r.cpu.cores.Count) { throw "Takt je CPU-Kern fehlt" }
@@ -127,8 +129,9 @@ jobs:
           $p.StartInfo.FileName = (Resolve-Path sensor_helper/out/SensorHelper.exe).Path
           $p.StartInfo.UseShellExecute = $false
           $p.StartInfo.RedirectStandardOutput = $true
+          $p.StartInfo.RedirectStandardInput = $true
           [void]$p.Start()
-          $l = @(); for ($k = 0; $k -lt 3; $k++) { $l += $p.StandardOutput.ReadLine() }
+          $l = @(); for ($k = 0; $k -lt 3; $k++) { $p.StandardInput.WriteLine(""); $l += $p.StandardOutput.ReadLine() }
           $p.Kill()
           Write-Host "Mit PawnIO: $($l[-1])"
       - uses: actions/upload-artifact@v4

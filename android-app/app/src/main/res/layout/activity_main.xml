@@ -282,17 +282,6 @@
                     android:layout_marginTop="4dp" />
 
                 <TextView
-                    android:id="@+id/btText"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:ellipsize="end"
-                    android:maxLines="2"
-                    android:text="Bluetooth –"
-                    android:textColor="@color/text"
-                    android:textSize="15sp" />
-
-                <TextView
                     android:id="@+id/trafficText"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
