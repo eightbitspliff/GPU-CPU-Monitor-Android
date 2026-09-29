@@ -12,9 +12,6 @@ data class GpuStats(
     val tempC: Double?,
     val powerW: Double?,
     val clockMhz: Double?,
-    val vramBwGbs: Double?,
-    val vramBwMaxGbs: Double?,
-    val vramCtrlPct: Double?,
 )
 
 data class WifiStats(
@@ -49,8 +46,6 @@ data class PcStats(
     val ramUsedMb: Double,
     val ramTotalMb: Double,
     val ramUsage: Double,
-    val ramBwGbs: Double?,
-    val ramBwMaxGbs: Double?,
     val gpus: List<GpuStats>,
     val wifi: WifiStats?,
     val bluetooth: BtStats?,
@@ -127,9 +122,6 @@ object StatsClient {
                         tempC = g.num("temp_c"),
                         powerW = g.num("power_w"),
                         clockMhz = g.num("clock_mhz"),
-                        vramBwGbs = g.num("vram_bw_gbs"),
-                        vramBwMaxGbs = g.num("vram_bw_max_gbs"),
-                        vramCtrlPct = g.num("vram_ctrl_pct"),
                     )
                 )
             }
@@ -151,8 +143,6 @@ object StatsClient {
             ramUsedMb = ram.num("used_mb") ?: 0.0,
             ramTotalMb = ram.num("total_mb") ?: 0.0,
             ramUsage = ram.num("usage") ?: 0.0,
-            ramBwGbs = ram.num("bandwidth_gbs"),
-            ramBwMaxGbs = ram.num("bandwidth_max_gbs"),
             gpus = gpus,
             wifi = net?.optJSONObject("wifi")?.let { parseWifi(it) },
             bluetooth = net?.optJSONObject("bluetooth")?.let { parseBt(it) },
@@ -223,17 +213,6 @@ fun fmtRate(bps: Double) = when {
     bps >= 1e9 -> String.format(java.util.Locale.GERMANY, "%.2f GBit/s", bps / 1e9)
     bps >= 1e6 -> String.format(java.util.Locale.GERMANY, "%.1f MBit/s", bps / 1e6)
     else -> "${Math.round(bps / 1e3)} kBit/s"
-}
-
-/** Bandbreite "aktuell / max GB/s"; fehlt der aktuelle Wert, nur das Maximum. */
-fun fmtBw(cur: Double?, max: Double?): String? {
-    fun f(v: Double) = if (v >= 100) "${Math.round(v)}" else String.format(java.util.Locale.GERMANY, "%.1f", v)
-    return when {
-        cur != null && max != null -> "${f(cur)} / ${f(max)} GB/s"
-        cur != null -> "${f(cur)} GB/s"
-        max != null -> "max. ${f(max)} GB/s"
-        else -> null
-    }
 }
 
 fun fmtGb(mb: Double?) = if (mb == null) "–" else String.format(java.util.Locale.GERMANY, "%.1f GB", mb / 1024.0)

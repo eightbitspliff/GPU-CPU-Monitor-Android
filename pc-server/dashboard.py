@@ -21,6 +21,8 @@ DASHBOARD_HTML = r"""<!doctype html>
   body.cast { cursor:none; }
   .wrap { height:100%; display:flex; flex-direction:column; padding:2vh 1.8vw; gap:1.8vh; }
   header { display:flex; align-items:baseline; gap:1.2vw; }
+  #clock { font-size:6vh; font-weight:600; font-variant-numeric:tabular-nums; color:var(--text);
+    padding-right:1.2vw; border-right:2px solid var(--track); }
   #host { font-size:6vh; font-weight:600; }
   #status { font-size:3.6vh; color:var(--muted); }
   #status.err { color:var(--err); }
@@ -34,8 +36,6 @@ DASHBOARD_HTML = r"""<!doctype html>
   .gauge .info { font-size:5vh; line-height:1.25; margin-top:.6vh; min-height:5.5vh; text-align:center;
     display:flex; flex-wrap:wrap; justify-content:center; gap:0 1.2vw; }
   .gauge .info span { white-space:nowrap; }
-  .gauge .bw { font-size:3.4vh; color:var(--muted); white-space:nowrap; overflow:hidden;
-    text-overflow:ellipsis; max-width:100%; text-align:center; min-height:4vh; }
   .track { fill:none; stroke:var(--track); stroke-width:8; stroke-linecap:round; }
   .arc { fill:none; stroke-width:8; stroke-linecap:round; transition:stroke-dasharray .6s ease-out; }
   .val { font-size:22px; font-weight:600; fill:var(--text); text-anchor:middle; }
@@ -58,19 +58,19 @@ DASHBOARD_HTML = r"""<!doctype html>
 </head>
 <body>
 <div class="wrap">
-  <header><div id="host">PC Monitor</div><div id="status">Verbinde…</div></header>
+  <header><div id="clock">--:--</div><div id="host">PC Monitor</div><div id="status">Verbinde…</div></header>
   <div class="main">
     <div class="card gauge" id="cpu">
       <svg viewBox="0 0 100 92"><path class="track" d="M21.7 78.3 A40 40 0 1 1 78.3 78.3" pathLength="100"/>
         <path class="arc" d="M21.7 78.3 A40 40 0 1 1 78.3 78.3" pathLength="100" stroke="var(--cpu)" stroke-dasharray="0 100"/>
         <text class="val" x="50" y="56">–</text><text class="lbl" x="50" y="84">CPU</text></svg>
-      <div class="name">–</div><div class="info"></div><div class="bw"></div>
+      <div class="name">–</div><div class="info"></div>
     </div>
     <div class="card gauge" id="gpu">
       <svg viewBox="0 0 100 92"><path class="track" d="M21.7 78.3 A40 40 0 1 1 78.3 78.3" pathLength="100"/>
         <path class="arc" d="M21.7 78.3 A40 40 0 1 1 78.3 78.3" pathLength="100" stroke="var(--gpu)" stroke-dasharray="0 100"/>
         <text class="val" x="50" y="56">–</text><text class="lbl" x="50" y="84">GPU</text></svg>
-      <div class="name">–</div><div class="info"></div><div class="bw"></div>
+      <div class="name">–</div><div class="info"></div>
     </div>
     <div class="card graph"><div class="t">Verlauf (5 Minuten)</div><canvas id="graph"></canvas></div>
     <div class="card bars">
@@ -89,13 +89,12 @@ DASHBOARD_HTML = r"""<!doctype html>
   function $(id) { return document.getElementById(id); }
   function pct(v) { return v == null ? "–" : Math.round(v) + " %"; }
   function gb(mb) { return mb == null ? "–" : (mb / 1024).toFixed(1).replace(".", ",") + " GB"; }
-  function setGauge(id, v, name, info, bwText) {
+  function setGauge(id, v, name, info) {
     var el = $(id);
     var val = v == null ? 0 : Math.max(0, Math.min(100, v));
     el.querySelector(".arc").setAttribute("stroke-dasharray", val + " 100");
     el.querySelector(".val").textContent = v == null ? "–" : Math.round(v) + "%";
     el.querySelector(".name").textContent = name;
-    el.querySelector(".bw").textContent = bwText || "";
     var box = el.querySelector(".info");
     box.textContent = "";
     info.forEach(function (t) { var sp = document.createElement("span"); sp.textContent = t; box.appendChild(sp); });
@@ -142,15 +141,12 @@ DASHBOARD_HTML = r"""<!doctype html>
     if (cpu.freq_mhz != null) ci.push((cpu.freq_mhz / 1000).toFixed(2).replace(".", ",") + " GHz");
     if (cpu.temp_c != null) ci.push(Math.round(cpu.temp_c) + " °C");
     if (cpu.power_w != null) ci.push(Math.round(cpu.power_w) + " W");
-    var rb = bw(ram.bandwidth_gbs, ram.bandwidth_max_gbs);
-    setGauge("cpu", cpu.usage, cpu.name, ci, rb ? "RAM " + rb : "");
+    setGauge("cpu", cpu.usage, cpu.name, ci);
     var gi = [];
     if (gpu && gpu.power_w != null) gi.push(Math.round(gpu.power_w) + " W");
     if (gpu && gpu.clock_mhz != null) gi.push(Math.round(gpu.clock_mhz) + " MHz");
     if (gpu && gpu.temp_c != null) gi.push(Math.round(gpu.temp_c) + " °C");
-    var vb = gpu ? bw(gpu.vram_bw_gbs, gpu.vram_bw_max_gbs) : null;
-    vb = vb ? "VRAM " + vb : (gpu && gpu.vram_ctrl_pct != null ? "VRAM-Controller " + Math.round(gpu.vram_ctrl_pct) + " %" : "");
-    setGauge("gpu", gpu ? gpu.usage : null, gpu ? gpu.name : "Keine GPU-Daten", gi, vb);
+    setGauge("gpu", gpu ? gpu.usage : null, gpu ? gpu.name : "Keine GPU-Daten", gi);
     $("ramT").textContent = "RAM  " + gb(ram.used_mb) + " / " + gb(ram.total_mb) + "  (" + pct(ram.usage) + ")";
     $("ramB").style.width = ram.usage + "%";
     if (gpu && gpu.mem_used_mb != null) {
@@ -164,13 +160,6 @@ DASHBOARD_HTML = r"""<!doctype html>
     draw();
   }
 
-  function bw(cur, max) {
-    function f(v) { return v >= 50 ? Math.round(v) : v.toFixed(1).replace(".", ","); }
-    if (cur != null && max != null) return f(cur) + " / " + f(max) + " GB/s";
-    if (cur != null) return f(cur) + " GB/s";
-    if (max != null) return "max. " + f(max) + " GB/s";
-    return null;
-  }
   function rate(bps) {
     if (bps >= 1e9) return (bps / 1e9).toFixed(2).replace(".", ",") + " GBit/s";
     if (bps >= 1e6) return (bps / 1e6).toFixed(1).replace(".", ",") + " MBit/s";
@@ -213,6 +202,11 @@ DASHBOARD_HTML = r"""<!doctype html>
     x.onerror = x.ontimeout = fail;
     x.send();
   }
+  function tick() {
+    var d = new Date();
+    $("clock").textContent = ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
+  }
+  tick(); setInterval(tick, 1000);
   window.addEventListener("resize", draw);
   poll(); setInterval(poll, 1000);
 })();

@@ -122,10 +122,6 @@ def run(sampler, caster, ips, port, start_hidden=False):
     tk.Label(card, textvariable=gpu_power_var, bg=CARD, fg=MUTED, font=("Segoe UI", 8),
              wraplength=300, justify="left").pack(anchor="w", padx=12)
 
-    bw_var = tk.StringVar(value="")
-    tk.Label(card, textvariable=bw_var, bg=CARD, fg=MUTED, font=("Segoe UI", 8),
-             wraplength=300, justify="left").pack(anchor="w", padx=12, pady=(4, 0))
-
     net_var = tk.StringVar(value="")
     tk.Label(card, textvariable=net_var, bg=CARD, fg=TEXT, font=("Segoe UI", 9),
              wraplength=300, justify="left").pack(anchor="w", padx=12, pady=(6, 0))
@@ -279,21 +275,6 @@ def run(sampler, caster, ips, port, start_hidden=False):
             cpu_w = d["cpu"].get("power_w")
             cpu_var.set(f"CPU  {_pct(cpu)}" + (f"  ·  {round(temp)} °C" if temp is not None else "")
                         + (f"  ·  {round(cpu_w)} W" if cpu_w is not None else ""))
-            ram = d.get("ram") or {}
-            bw_parts = []
-            if ram.get("bandwidth_max_gbs") is not None or ram.get("bandwidth_gbs") is not None:
-                cur = ram.get("bandwidth_gbs")
-                bw_parts.append("RAM-Bandbreite: " + (f"{cur:.1f} / " if cur is not None else "aktuell – (HWiNFO mit Shared Memory starten) / max. ")
-                                + f"{ram.get('bandwidth_max_gbs') or '–'} GB/s" + (f" ({ram['bandwidth_desc']})" if ram.get("bandwidth_desc") else ""))
-            if g0.get("vram_bw_gbs") is not None or g0.get("vram_bw_max_gbs") is not None:
-                cur = g0.get("vram_bw_gbs")
-                ctrl = g0.get("vram_ctrl_pct")
-                bw_parts.append("VRAM-Bandbreite: " + (f"{cur:.0f}" if cur is not None else "–")
-                                + f" / {g0.get('vram_bw_max_gbs') or '–'} GB/s"
-                                + (f" (Controller {round(ctrl)} %)" if ctrl is not None else " (Controller-Last fehlt)"))
-            elif g0.get("vram_ctrl_pct") is not None:
-                bw_parts.append(f"VRAM-Controller: {round(g0['vram_ctrl_pct'])} %")
-            bw_var.set("\n".join(bw_parts))
             gpu_var.set(f"GPU  {_pct(gpu)}" + (f"  ·  {round(g0['power_w'])} W" if g0.get("power_w") is not None else ""))
             src = g0.get("power_sources") or {}
             gpu_power_var.set("GPU-Leistungssensoren: " + ", ".join(
