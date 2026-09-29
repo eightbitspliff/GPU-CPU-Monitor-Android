@@ -78,6 +78,7 @@ jobs:
           if ($null -eq $j.admin) { throw "Sensor-Modul liefert keine Daten" }
       - name: Netzwerkadapter anzeigen
         run: |
+          Get-CimInstance Win32_PhysicalMemory | Select-Object ConfiguredClockSpeed, Speed, SMBIOSMemoryType, Capacity | Format-Table -AutoSize
           python -c "import psutil; print(psutil.net_io_counters(pernic=True)); print({n: s.isup for n, s in psutil.net_if_stats().items()})"
       - name: EXE bauen
         run: |
@@ -106,6 +107,7 @@ jobs:
             Start-Sleep -Seconds 3
             $r2 = Invoke-RestMethod http://127.0.0.1:47811/stats -TimeoutSec 3
             Write-Host "Netzwerk: $($r2.net | ConvertTo-Json -Compress -Depth 5)"
+            Write-Host "RAM (später): $($r2.ram | ConvertTo-Json -Compress)"
             if (-not $r2.net.traffic) { throw "Netzwerk-Traffic fehlt" }
             if ($r.cpu.temp_note -eq "Sensor-Modul fehlt im PC-Server") { throw $r.cpu.temp_note }
             if (-not $r.cpu.core_freq_mhz -or $r.cpu.core_freq_mhz.Count -ne $r.cpu.cores.Count) { throw "Takt je CPU-Kern fehlt" }
