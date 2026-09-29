@@ -114,6 +114,25 @@ jobs:
           } finally {
             Stop-Process -Id $p.Id -Force
           }
+      - name: CPU-Verbrauch messen (30 s, Abfrage jede Sekunde wie App/Nest Hub)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist\PCMonitorServer.exe -ArgumentList "--tray" -PassThru
+          for ($i = 0; $i -lt 20; $i++) { Start-Sleep 1; try { Invoke-RestMethod http://127.0.0.1:47811/stats -TimeoutSec 2 | Out-Null; break } catch { } }
+          Start-Sleep 3
+          function T($name) { ($(Get-Process $name -ErrorAction SilentlyContinue) | Measure-Object -Property TotalProcessorTime -Sum).Sum }
+          function cpu($n) { $x = Get-Process $n -ErrorAction SilentlyContinue; if ($x) { ($x | ForEach-Object { $_.TotalProcessorTime.TotalMilliseconds } | Measure-Object -Sum).Sum } else { 0 } }
+          $names = "PCMonitorServer", "SensorHelper", "WmiPrvSE", "powershell"
+          $before = @{}; foreach ($n in $names) { $before[$n] = cpu $n }
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          for ($i = 0; $i -lt 30; $i++) { try { Invoke-RestMethod http://127.0.0.1:47811/stats -TimeoutSec 2 | Out-Null } catch { }; Start-Sleep -Milliseconds 1000 }
+          $sec = $sw.Elapsed.TotalSeconds
+          foreach ($n in $names) {
+            $ms = (cpu $n) - $before[$n]
+            Write-Host ("{0,-16} {1,8:N0} ms CPU in {2:N0} s  = {3:N2} % eines Kerns" -f $n, $ms, $sec, ($ms / $sec / 10))
+          }
+          Stop-Process -Id $p.Id -Force
+          Get-Process SensorHelper -ErrorAction SilentlyContinue | Stop-Process -Force
       - name: PawnIO-Installation testen (Treiber für CPU-Temperatur)
         continue-on-error: true
         shell: pwsh
