@@ -147,7 +147,7 @@ static class Program
                                            Regex.IsMatch(s.Name, "Core", RegexOptions.IgnoreCase)).ToList();
             if (cores.Count > 0) p = cores.Sum(s => s.Value.Value);
         }
-        return p != null && p >= 0 && p < 1500 ? p : null;
+        return p != null && p > 0 && p < 1500 ? p : null;
     }
 
     static IEnumerable<ISensor> GpuPowerSensors(List<ISensor> sensors) =>

@@ -136,7 +136,7 @@ class CpuSensors:
     def power(self):
         """Leistungsaufnahme des Prozessors in Watt (oder None)."""
         p = self._lhm.cpu_power() if self._lhm is not None else None
-        if p is not None:
+        if p:  # 0 W = kein Messwert
             return round(p, 1)
         return self._rapl_power()
 
