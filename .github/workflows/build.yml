@@ -142,9 +142,18 @@ jobs:
             $c = Invoke-RestMethod "http://127.0.0.1:47811/cast?scan=1" -TimeoutSec 30
             Write-Host "Cast verfügbar: $($c.available)  Geräte: $($c.devices.Count)  $($c.error)"
             if (-not $c.available) { throw "Cast-Unterstützung fehlt in der EXE" }
+            Start-Sleep -Seconds 2
+            $t = Get-ScheduledTask -TaskName PCMonitorServer -ErrorAction SilentlyContinue
+            if (-not $t) { throw "Autostart-Aufgabe fehlt" }
+            $a = $t.Actions[0]
+            Write-Host "Autostart: $($a.Execute) $($a.Arguments)  RunLevel=$($t.Principal.RunLevel)  Limit=$($t.Settings.ExecutionTimeLimit)  Trigger=$($t.Triggers[0].CimClass.CimClassName)"
+            if ($a.Execute -notmatch "PCMonitorServer\.exe" -or $a.Arguments -ne "--tray") { throw "Autostart-Aufgabe zeigt falsch" }
+            if ($t.Principal.RunLevel -ne "Highest") { throw "Autostart ohne höchste Rechte" }
+            if ($t.Settings.ExecutionTimeLimit -ne "PT0S") { throw "Autostart hat Laufzeitlimit" }
           } finally {
             # Server hart beenden (wie "Task beenden"): das Sensor-Modul muss mit enden
             Stop-Process -Name PCMonitorServer -Force -ErrorAction SilentlyContinue
+            Unregister-ScheduledTask -TaskName PCMonitorServer -Confirm:$false -ErrorAction SilentlyContinue
           }
           Start-Sleep -Seconds 2
           $left = Get-Process SensorHelper, PresentMon -ErrorAction SilentlyContinue
