@@ -88,6 +88,10 @@ class LhmHelper:
             failures = 0 if time.time() - started > 60 else failures + 1
             time.sleep(2)
 
+    def pid(self):
+        proc = self._proc
+        return proc.pid if proc is not None and proc.poll() is None else None
+
     def poke(self):
         """Eine Messung anfordern. Das Modul misst nur auf Anfrage, das Ergebnis
         kommt asynchron über stdout (und ist beim nächsten Abruf da)."""

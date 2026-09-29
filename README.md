@@ -78,7 +78,8 @@ Der Server ist auf möglichst wenig CPU-Last ausgelegt:
 - Keine WMI-/PowerShell-Abfragen im laufenden Betrieb (GPU über NVML bzw. `pdh.dll`).
 - Messung jede Sekunde, solange App, Nest Hub oder das Server-Fenster Werte anzeigen; sonst nur
   alle 10 s (für den Tray-Tooltip).
-- Das Sensor-Modul misst nur auf Anfrage (alle 2 s), bei NVIDIA nur die CPU.
+- Das Sensor-Modul misst nur auf Anfrage (alle 3 s), bei NVIDIA nur die CPU.
+- Das Server-Fenster zeigt die eigene CPU-Last (Server und Sensor-Modul) wie im Task-Manager.
 - Server und Sensor-Modul laufen mit niedriger Priorität und im Effizienzmodus (EcoQoS).
 
 ## Server ohne EXE (mit Python)

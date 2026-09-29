@@ -7,6 +7,7 @@ Doppelklick aufs Tray-Icon oder "Anzeigen" holt das Fenster zurück.
 import json
 import os
 import threading
+import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -190,6 +191,10 @@ def run(sampler, caster, ips, port, start_hidden=False):
     elif not caster.target:
         do_search()
 
+    own_var = tk.StringVar(value="")
+    tk.Label(root, textvariable=own_var, bg=BG, fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", **pad)
+    own_state = {"last": 0.0}
+
     tk.Label(root, text="Minimieren legt das Fenster in den Systemtray.",
              bg=BG, fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 12), **pad)
 
@@ -263,6 +268,11 @@ def run(sampler, caster, ips, port, start_hidden=False):
                 tray.title = f"PC Monitor – CPU {_pct(cpu)} · GPU {_pct(gpu)}"
             except Exception:
                 pass
+        if visible and time.monotonic() - own_state["last"] >= 5:
+            own_state["last"] = time.monotonic()
+            srv, hlp = sampler.own_cpu()
+            fmt = lambda v: "–" if v is None else f"{v:.2f} %".replace(".", ",")
+            own_var.set(f"Eigene CPU-Last (wie Task-Manager): Server {fmt(srv)}  ·  Sensor-Modul {fmt(hlp)}")
         root.after(1000 if visible else 5000, refresh)  # verborgen: nur Tooltip, seltener
 
     refresh()

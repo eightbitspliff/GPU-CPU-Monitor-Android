@@ -321,10 +321,11 @@ class Sampler(threading.Thread):
                 print("Messfehler:", e)
 
     def sample(self):
-        # Sensor-Modul (CPU-Temperatur/-Leistung) nur jede 2. Messung (alle 2 s) – ändert sich
-        # langsam; es misst parallel, das Ergebnis gilt ab dem nächsten Durchlauf
+        # Sensor-Modul (CPU-Temperatur/-Leistung) nur jede 3. Messung (alle 3 s) – das ist der
+        # aufwendigste Teil, die Werte ändern sich langsam; es misst parallel, das Ergebnis gilt
+        # ab dem nächsten Durchlauf
         self._n = getattr(self, "_n", 0) + 1
-        if self._n % 2 == 1 or not self.active:
+        if self._n % 3 == 1 or not self.active:
             self.lhm.poke()
         cores = psutil.cpu_percent(percpu=True)
         total = round(sum(cores) / len(cores), 1) if cores else 0.0
@@ -351,6 +352,28 @@ class Sampler(threading.Thread):
         }
         with self.lock:
             self.data = data
+
+    def own_cpu(self):
+        """Eigene CPU-Last in % der Gesamt-CPU (wie im Task-Manager): (Server, Sensor-Modul)."""
+        n = psutil.cpu_count() or 1
+        procs = getattr(self, "_own_procs", None)
+        if procs is None:
+            procs = self._own_procs = {"server": psutil.Process()}
+        pid = self.lhm.pid()
+        if pid and (procs.get("helper") is None or procs["helper"].pid != pid):
+            try:
+                procs["helper"] = psutil.Process(pid)
+                procs["helper"].cpu_percent(None)
+            except Exception:
+                procs["helper"] = None
+        out = []
+        for key in ("server", "helper"):
+            p = procs.get(key)
+            try:
+                out.append(p.cpu_percent(None) / n if p else None)
+            except Exception:
+                out.append(None)
+        return tuple(out)
 
     def snapshot(self):
         with self.lock:
