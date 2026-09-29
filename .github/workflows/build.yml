@@ -72,8 +72,12 @@ jobs:
             $c = Invoke-RestMethod "http://127.0.0.1:47811/cast?scan=1" -TimeoutSec 30
             Write-Host "Cast verfügbar: $($c.available)  Geräte: $($c.devices.Count)  $($c.error)"
             if (-not $c.available) { throw "Cast-Unterstützung fehlt in der EXE" }
+            $run = (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name PCMonitorServer -ErrorAction SilentlyContinue).PCMonitorServer
+            Write-Host "Autostart-Eintrag: $run"
+            if ($run -notmatch "PCMonitorServer\.exe`" --tray$") { throw "Autostart-Eintrag fehlt oder falsch" }
           } finally {
             Stop-Process -Id $p.Id -Force
+            Remove-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name PCMonitorServer -ErrorAction SilentlyContinue
           }
       - uses: actions/upload-artifact@v4
         with:

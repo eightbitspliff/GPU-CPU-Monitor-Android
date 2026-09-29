@@ -10,6 +10,8 @@ from tkinter import messagebox, ttk
 
 import pystray
 
+import autostart
+import caster as caster_mod
 from app_icon import make_icon
 
 BG = "#0E1116"
@@ -33,6 +35,8 @@ def _pct(v):
 
 def run(sampler, caster, ips, port, start_hidden=False):
     root = tk.Tk()
+    if start_hidden:
+        root.withdraw()  # sofort unsichtbar, kein kurzes Aufblitzen beim Autostart
     root.title("PC Monitor Server")
     root.configure(bg=BG)
     root.resizable(False, False)
@@ -145,10 +149,20 @@ def run(sampler, caster, ips, port, start_hidden=False):
         tray.stop()
         root.destroy()
 
+    def toggle_autostart(icon=None, item=None):
+        on = not autostart.is_enabled()
+        autostart.set_enabled(on)
+        with caster.lock:
+            caster.cfg["autostart"] = on
+            caster_mod._save_config(caster.cfg)
+
     tray = pystray.Icon(
         "pcmonitor", icon_img, "PC Monitor Server",
         menu=pystray.Menu(
             pystray.MenuItem("Anzeigen", show_window, default=True),
+            pystray.MenuItem("Mit Windows starten", toggle_autostart,
+                             checked=lambda item: autostart.is_enabled(),
+                             visible=autostart.AVAILABLE),
             pystray.MenuItem("Beenden", quit_app),
         ),
     )

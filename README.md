@@ -23,9 +23,11 @@ Der Server hat ein kleines Fenster mit IP-Adresse und Live-Werten. **Minimieren 
 Systemtray** (Icon unten rechts neben der Uhr, Tooltip zeigt CPU/GPU). Doppelklick aufs Icon holt das
 Fenster zurück, Rechtsklick → „Beenden“ schließt ihn.
 
-Tipp: Damit der Server immer läuft, eine Verknüpfung zur EXE in den Autostart-Ordner legen
-(`Win+R` → `shell:startup`) und in den Eigenschaften der Verknüpfung
-hinter das Ziel ` --tray` schreiben – dann startet er direkt unsichtbar im Tray.
+**Autostart:** Die EXE trägt sich beim ersten Start selbst in den Windows-Autostart ein
+(`HKCU\...\Run`, mit `--tray`) – nach jedem Windows-Start läuft sie unsichtbar im Tray und
+verbindet sich automatisch wieder mit dem zuletzt gewählten Nest Hub. Wird die EXE verschoben,
+korrigiert sie den Eintrag beim nächsten Start. Abschalten: Rechtsklick aufs Tray-Icon →
+„Mit Windows starten“.
 
 ## App-Funktionen
 
