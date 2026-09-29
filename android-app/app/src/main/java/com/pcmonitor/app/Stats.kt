@@ -19,6 +19,7 @@ data class PcStats(
     val cpuUsage: Double,
     val cpuFreqMhz: Double?,
     val cpuTempC: Double?,
+    val cpuPowerW: Double?,
     val ramUsedMb: Double,
     val ramTotalMb: Double,
     val ramUsage: Double,
@@ -104,6 +105,7 @@ object StatsClient {
             cpuUsage = cpu.num("usage") ?: 0.0,
             cpuFreqMhz = cpu.num("freq_mhz"),
             cpuTempC = cpu.num("temp_c"),
+            cpuPowerW = cpu.num("power_w"),
             ramUsedMb = ram.num("used_mb") ?: 0.0,
             ramTotalMb = ram.num("total_mb") ?: 0.0,
             ramUsage = ram.num("usage") ?: 0.0,
@@ -165,6 +167,10 @@ object Prefs {
 }
 
 fun fmtPct(v: Double?) = if (v == null) "–" else "${Math.round(v)} %"
+
+fun fmtWatt(v: Double?) = if (v == null) "–" else "${Math.round(v)} W"
+
+fun fmtTemp(v: Double?) = if (v == null) "–" else "${Math.round(v)} °C"
 
 fun fmtGb(mb: Double?) = if (mb == null) "–" else String.format(java.util.Locale.GERMANY, "%.1f GB", mb / 1024.0)
 

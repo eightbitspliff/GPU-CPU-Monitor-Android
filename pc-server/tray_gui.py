@@ -129,7 +129,8 @@ def run(sampler, caster, ips, port, start_hidden=False):
     elif not caster.target:
         do_search()
 
-    tk.Label(root, text="Minimieren legt das Fenster in den Systemtray.",
+    tk.Label(root, text="Minimieren legt das Fenster in den Systemtray.\n"
+                        "Schließen (X) beendet den Server komplett.", justify="left",
              bg=BG, fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 12), **pad)
 
     # ---------------------------------------------------------------- Tray

@@ -16,7 +16,6 @@ import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
-import java.util.Locale
 
 class MainActivity : Activity() {
 
@@ -25,14 +24,18 @@ class MainActivity : Activity() {
     private lateinit var cpuGauge: GaugeView
     private lateinit var gpuGauge: GaugeView
     private lateinit var cpuName: TextView
-    private lateinit var cpuInfo: TextView
+    private lateinit var cpuPower: TextView
+    private lateinit var cpuTemp: TextView
     private lateinit var gpuName: TextView
-    private lateinit var gpuInfo: TextView
+    private lateinit var gpuPower: TextView
+    private lateinit var gpuTemp: TextView
     private lateinit var graphLong: GraphView
     private lateinit var graphShort: GraphView
     private lateinit var ramText: TextView
+    private lateinit var ramPct: TextView
     private lateinit var ramBar: BarView
     private lateinit var vramText: TextView
+    private lateinit var vramPct: TextView
     private lateinit var vramBar: BarView
     private lateinit var searchButton: Button
 
@@ -56,14 +59,18 @@ class MainActivity : Activity() {
         cpuGauge = findViewById(R.id.cpuGauge)
         gpuGauge = findViewById(R.id.gpuGauge)
         cpuName = findViewById(R.id.cpuName)
-        cpuInfo = findViewById(R.id.cpuInfo)
+        cpuPower = findViewById(R.id.cpuPower)
+        cpuTemp = findViewById(R.id.cpuTemp)
         gpuName = findViewById(R.id.gpuName)
-        gpuInfo = findViewById(R.id.gpuInfo)
+        gpuPower = findViewById(R.id.gpuPower)
+        gpuTemp = findViewById(R.id.gpuTemp)
         graphLong = findViewById(R.id.graphLong)
         graphShort = findViewById(R.id.graphShort)
         ramText = findViewById(R.id.ramText)
+        ramPct = findViewById(R.id.ramPct)
         ramBar = findViewById(R.id.ramBar)
         vramText = findViewById(R.id.vramText)
+        vramPct = findViewById(R.id.vramPct)
         vramBar = findViewById(R.id.vramBar)
         searchButton = findViewById(R.id.searchButton)
 
@@ -153,29 +160,28 @@ class MainActivity : Activity() {
 
             cpuGauge.setValue(s.cpuUsage)
             cpuName.text = s.cpuName
-            cpuInfo.text = listOfNotNull(
-                s.cpuFreqMhz?.let { String.format(Locale.GERMANY, "%.2f GHz", it / 1000.0) },
-                s.cpuTempC?.let { "${Math.round(it)} °C" },
-            ).joinToString("  ·  ")
+            cpuPower.text = fmtWatt(s.cpuPowerW)
+            cpuTemp.text = fmtTemp(s.cpuTempC)
 
             val g = s.gpu
             gpuGauge.setValue(g?.usage)
             gpuName.text = g?.name ?: "Keine GPU-Daten"
-            gpuInfo.text = if (g == null) "" else listOfNotNull(
-                g.tempC?.let { "${Math.round(it)} °C" },
-                g.powerW?.let { "${Math.round(it)} W" },
-            ).joinToString("  ·  ")
+            gpuPower.text = fmtWatt(g?.powerW)
+            gpuTemp.text = fmtTemp(g?.tempC)
 
-            ramText.text = "RAM  ${fmtGbNum(s.ramUsedMb)} / ${fmtGb(s.ramTotalMb)}  ·  ${fmtPct(s.ramUsage)}"
+            ramPct.text = fmtPct(s.ramUsage)
+            ramText.text = "${fmtGbNum(s.ramUsedMb)} / ${fmtGb(s.ramTotalMb)}"
             ramBar.setValue(s.ramUsage)
             if (g?.memUsedMb != null) {
                 val total = g.memTotalMb
                 val pct = if (total != null && total > 0) g.memUsedMb / total * 100 else null
-                vramText.text = if (total != null) "VRAM  ${fmtGbNum(g.memUsedMb)} / ${fmtGb(total)}  ·  ${fmtPct(pct)}"
-                else "VRAM  ${fmtGb(g.memUsedMb)} belegt"
+                vramPct.text = fmtPct(pct)
+                vramText.text = if (total != null) "${fmtGbNum(g.memUsedMb)} / ${fmtGb(total)}"
+                else "${fmtGb(g.memUsedMb)} belegt"
                 vramBar.setValue(pct)
             } else {
-                vramText.text = "VRAM –"
+                vramPct.text = "–"
+                vramText.text = "–"
                 vramBar.setValue(null)
             }
 

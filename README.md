@@ -21,7 +21,8 @@ Funktioniert nur im eigenen Netzwerk (WLAN/LAN), kein Fernzugriff, kein Konto.
 
 Der Server hat ein kleines Fenster mit IP-Adresse und Live-Werten. **Minimieren legt ihn in den
 Systemtray** (Icon unten rechts neben der Uhr, Tooltip zeigt CPU/GPU). Doppelklick aufs Icon holt das
-Fenster zurück, Rechtsklick → „Beenden“ schließt ihn.
+Fenster zurück. **Schließen (X)** oder Rechtsklick → „Beenden“ beendet den Server komplett –
+inklusive aller Hintergrundprozesse; eine laufende Nest-Hub-Anzeige wird dabei geschlossen.
 
 **Autostart:** Die EXE trägt sich beim ersten Start selbst in den Windows-Autostart ein
 (`HKCU\...\Run`, mit `--tray`) – nach jedem Windows-Start läuft sie unsichtbar im Tray und
@@ -31,8 +32,9 @@ korrigiert sie den Eintrag beim nächsten Start. Abschalten: Rechtsklick aufs Tr
 
 ## App-Funktionen
 
-- Große Anzeigen für **CPU** und **GPU** (Auslastung in %), dazu Takt, Temperatur, Stromverbrauch
-- **RAM**-Belegung direkt in der CPU-Anzeige, **VRAM**-Belegung direkt in der GPU-Anzeige
+- Uhrzeit oben links
+- Große Anzeigen für **CPU** und **GPU** (Auslastung in %), darunter untereinander:
+  **Leistungsaufnahme**, **Temperatur** und **RAM** (CPU) bzw. **VRAM** (GPU)
 - Zwei Verlaufsdiagramme: oben die **letzten 60 Minuten**, unten die **letzten 15 Minuten**.
   Der Server schreibt den Verlauf mit – die Diagramme sind also sofort gefüllt, auch wenn
   die App vorher geschlossen war
@@ -57,6 +59,18 @@ Das Dashboard gibt es auch im Browser: `http://<pc-ip>:47811/`
 
 Technik: Gestreamt wird über die Cast-App „DashCast“, die eine Webseite auf dem Gerät öffnet.
 Der Nest Hub lädt die Seite direkt vom PC; das Handy muss dafür nicht an sein.
+
+## CPU-Leistungsaufnahme und -Temperatur
+
+| Quelle | Werte | Hinweis |
+|---|---|---|
+| [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (läuft im Hintergrund) | Leistung, Temperatur | beste Werte unter Windows, auch für AMD |
+| Windows-Leistungsindikator „Energy Meter“ (RAPL) | Leistung | ohne Zusatzprogramm, nicht auf jedem PC vorhanden |
+| Linux: `/sys/class/powercap`, Sensoren | Leistung, Temperatur | Leistung ggf. nur mit root |
+
+Windows selbst stellt die CPU-Temperatur ohne Zusatzprogramm nicht bereit. Wird ein Wert
+nicht angezeigt („–“): LibreHardwareMonitor starten (Options → „Run On Windows Startup“),
+der Server liest die Werte dann automatisch mit.
 
 ## GPU-Unterstützung
 

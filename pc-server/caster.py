@@ -105,6 +105,17 @@ class Caster:
             self._disconnect(quit_app=True)
             self._set_status("Aus")
 
+    def shutdown(self):
+        """Beim Beenden des Servers: Anzeige auf dem Gerät schließen und Verbindung trennen.
+        Das Gerät bleibt gespeichert, beim nächsten Start wird wieder verbunden."""
+        def work():
+            with self.lock:
+                self.target = None  # Hintergrund-Thread soll nicht neu verbinden
+                self._disconnect(quit_app=True)
+        t = threading.Thread(target=work, daemon=True)
+        t.start()
+        t.join(4)  # nicht ewig auf ein nicht erreichbares Gerät warten
+
     def state(self):
         with self.lock:
             return {"available": AVAILABLE, "active": self.target, "status": self.status}

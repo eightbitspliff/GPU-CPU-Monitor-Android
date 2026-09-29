@@ -44,6 +44,51 @@ HISTORY_SECONDS = 3600  # Verlauf für die Diagramme (60 Minuten)
 IS_WINDOWS = os.name == "nt"
 NO_WINDOW = 0x08000000 if IS_WINDOWS else 0  # CREATE_NO_WINDOW
 
+# Alle Hintergrundprozesse (PowerShell), die beim Beenden mit weg müssen
+_children = []
+
+# Beendet die PowerShell-Schleifen von selbst, sobald der Server nicht mehr läuft
+# (z.B. wenn er im Task-Manager hart beendet wurde).
+_PS_PARENT_CHECK = r"""
+$parentPid = %d
+function Test-Parent { return [bool](Get-Process -Id $parentPid -ErrorAction SilentlyContinue) }
+"""
+
+
+def start_powershell(script):
+    """Startet ein PowerShell-Skript unsichtbar im Hintergrund und merkt es sich."""
+    proc = subprocess.Popen(
+        ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+         "-Command", (_PS_PARENT_CHECK % os.getpid()) + script],
+        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+        creationflags=NO_WINDOW)
+    _children.append(proc)
+    return proc
+
+
+def shutdown(exit_code=0):
+    """Beendet den Server vollständig – inklusive aller Hintergrundprozesse."""
+    try:
+        if caster is not None:
+            caster.shutdown()
+    except Exception:
+        pass
+    for proc in _children:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+    try:  # sicherheitshalber alles, was sonst noch von uns gestartet wurde
+        for child in psutil.Process().children(recursive=True):
+            try:
+                child.kill()
+            except Exception:
+                pass
+    except Exception:
+        pass
+    # Hart beenden: offene Netzwerk-/Cast-Threads dürfen den Prozess nicht am Leben halten
+    os._exit(exit_code)
+
 
 # --------------------------------------------------------------------------- CPU
 
@@ -77,6 +122,104 @@ def cpu_temperature():
         if entries:
             return round(max(e.current for e in entries), 1)
     return None
+
+
+class CpuSensors:
+    """Leistungsaufnahme (W) und Temperatur (°C) der CPU.
+
+    Windows: LibreHardwareMonitor / OpenHardwareMonitor (falls gestartet, liefert
+    Leistung + Temperatur), sonst Windows-Leistungsindikator "Energy Meter" (RAPL,
+    nur Leistung, ohne Adminrechte).
+    Linux: RAPL über /sys/class/powercap und psutil für die Temperatur.
+    """
+
+    _PS_SCRIPT = r"""
+$ErrorActionPreference = 'SilentlyContinue'
+while (Test-Parent) {
+  $p = $null; $t = $null
+  foreach ($ns in 'root/LibreHardwareMonitor', 'root/OpenHardwareMonitor') {
+    $s = Get-CimInstance -Namespace $ns -ClassName Sensor
+    if (-not $s) { continue }
+    $cpu = $s | Where-Object { $_.Identifier -match 'cpu' }
+    $pw = $cpu | Where-Object { $_.SensorType -eq 'Power' -and $_.Name -match 'Package' } | Select-Object -First 1
+    if ($pw) { $p = $pw.Value }
+    $tp = $cpu | Where-Object { $_.SensorType -eq 'Temperature' -and $_.Name -match 'Package|Tctl|Tdie' } | Select-Object -First 1
+    if (-not $tp) { $tp = $cpu | Where-Object { $_.SensorType -eq 'Temperature' } | Sort-Object Value -Descending | Select-Object -First 1 }
+    if ($tp) { $t = $tp.Value }
+    break
+  }
+  if ($p -eq $null) {
+    $e = Get-CimInstance Win32_PerfFormattedData_Counters_EnergyMeter | Where-Object { $_.Name -match 'PKG' } | Select-Object -First 1
+    if ($e -and $e.Power -gt 0) { $p = $e.Power / 1000 }
+  }
+  [Console]::Out.WriteLine("VAL:" + $p + ";" + $t)
+  [Console]::Out.Flush()
+  Start-Sleep -Milliseconds 1000
+}
+"""
+
+    def __init__(self):
+        self.power_w = None
+        self.temp_c = None
+        self._rapl_path = None
+        self._rapl_last = None
+        if IS_WINDOWS:
+            try:
+                self._proc = start_powershell(self._PS_SCRIPT)
+                threading.Thread(target=self._pump_windows, daemon=True).start()
+            except Exception:
+                pass
+        else:
+            self._init_rapl()
+
+    def _pump_windows(self):
+        for line in self._proc.stdout:
+            line = line.strip()
+            if not line.startswith("VAL:"):
+                continue
+            power, _, temp = line[4:].partition(";")
+            self.power_w = self._num(power)
+            self.temp_c = self._num(temp)
+
+    @staticmethod
+    def _num(v):
+        try:
+            return round(float(v.replace(",", ".")), 1) if v.strip() else None
+        except ValueError:
+            return None
+
+    def _init_rapl(self):
+        base = "/sys/class/powercap"
+        try:
+            for name in sorted(os.listdir(base)):
+                path = os.path.join(base, name)
+                # Package-Zone: "intel-rapl:0" (auch bei AMD so benannt)
+                if name.count(":") == 1 and os.path.exists(os.path.join(path, "energy_uj")):
+                    with open(os.path.join(path, "energy_uj")) as f:
+                        f.read()
+                    self._rapl_path = path
+                    return
+        except OSError:
+            pass  # nicht vorhanden oder nur mit root lesbar
+
+    def _read_rapl(self):
+        try:
+            with open(os.path.join(self._rapl_path, "energy_uj")) as f:
+                energy = int(f.read())
+        except (OSError, ValueError):
+            return None
+        now = time.monotonic()
+        last, self._rapl_last = self._rapl_last, (now, energy)
+        if not last or energy < last[1] or now <= last[0]:
+            return None  # erste Messung oder Zählerüberlauf
+        return round((energy - last[1]) / 1e6 / (now - last[0]), 1)
+
+    def read(self):
+        """Liefert (power_w, temp_c)."""
+        if IS_WINDOWS:
+            return self.power_w, self.temp_c
+        power = self._read_rapl() if self._rapl_path else None
+        return power, cpu_temperature()
 
 
 # --------------------------------------------------------------------------- GPU
@@ -182,7 +325,7 @@ $ErrorActionPreference = 'SilentlyContinue'
 $name = (Get-CimInstance Win32_VideoController | Select-Object -First 1).Name
 [Console]::Out.WriteLine("NAME:" + $name)
 [Console]::Out.Flush()
-while ($true) {
+while (Test-Parent) {
   $eng = Get-CimInstance Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine
   $max = 0
   if ($eng) {
@@ -203,11 +346,7 @@ while ($true) {
 
     def _init_windows_counters(self):
         try:
-            self._win_proc = subprocess.Popen(
-                ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-                 "-Command", self._PS_SCRIPT],
-                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
-                creationflags=NO_WINDOW)
+            self._win_proc = start_powershell(self._PS_SCRIPT)
         except Exception:
             return False
         self._win_value = {"name": "GPU", "usage": None, "mem_used_mb": None,
@@ -284,6 +423,7 @@ class Sampler(threading.Thread):
         super().__init__(daemon=True)
         self.lock = threading.Lock()
         self.gpu = GpuReader()
+        self.cpu_sensors = CpuSensors()
         self.cpu_name = cpu_name()
         self.hostname = socket.gethostname()
         self.data = {}
@@ -307,6 +447,7 @@ class Sampler(threading.Thread):
         except Exception:
             freq_mhz = None
         vm = psutil.virtual_memory()
+        cpu_power, cpu_temp = self.cpu_sensors.read()
         data = {
             "host": self.hostname,
             "time": time.time(),
@@ -315,7 +456,8 @@ class Sampler(threading.Thread):
                 "usage": total,
                 "cores": [round(c, 1) for c in cores],
                 "freq_mhz": freq_mhz,
-                "temp_c": cpu_temperature(),
+                "temp_c": cpu_temp,
+                "power_w": cpu_power,
             },
             "ram": {
                 "used_mb": round(vm.used / 1048576),
@@ -462,6 +604,7 @@ def run_console():
             time.sleep(3600)
     except KeyboardInterrupt:
         pass
+    shutdown()
 
 
 def main():
@@ -484,7 +627,7 @@ def main():
             gui.show_error(msg)
         else:
             print(msg)
-        sys.exit(1)
+        shutdown(1)
 
     try:
         import autostart
@@ -494,6 +637,7 @@ def main():
 
     if gui:
         gui.run(sampler, caster, local_ips(), HTTP_PORT, start_hidden="--tray" in args)
+        shutdown()  # Fenster geschlossen / "Beenden" im Tray -> alles beenden
     else:
         run_console()
 
