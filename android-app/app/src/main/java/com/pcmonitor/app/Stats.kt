@@ -51,6 +51,31 @@ object StatsClient {
         }
     }
 
+    /** CPU/GPU-Verlauf, den der Server mitschreibt (1 Wert/Sekunde, ältester zuerst). NaN = Lücke. */
+    data class History(val cpu: List<Float>, val gpu: List<Float>)
+
+    /** Liefert null, wenn der Server zu alt ist und keinen Verlauf kennt. */
+    fun fetchHistory(address: String): History? {
+        val conn = URL(urlFor(address).removeSuffix("/stats") + "/history").openConnection() as HttpURLConnection
+        conn.connectTimeout = 2000
+        conn.readTimeout = 5000
+        conn.useCaches = false
+        try {
+            if (conn.responseCode == 404) return null
+            if (conn.responseCode != 200) error("HTTP ${conn.responseCode}")
+            val j = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+            fun list(key: String): List<Float> {
+                val arr = j.optJSONArray(key) ?: return emptyList()
+                return List(arr.length()) { i ->
+                    if (arr.isNull(i)) Float.NaN else arr.optDouble(i).toFloat()
+                }
+            }
+            return History(list("cpu"), list("gpu"))
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     private fun JSONObject.num(key: String): Double? =
         if (has(key) && !isNull(key)) optDouble(key).takeIf { !it.isNaN() } else null
 
@@ -142,6 +167,9 @@ object Prefs {
 fun fmtPct(v: Double?) = if (v == null) "–" else "${Math.round(v)} %"
 
 fun fmtGb(mb: Double?) = if (mb == null) "–" else String.format(java.util.Locale.GERMANY, "%.1f GB", mb / 1024.0)
+
+/** Wie [fmtGb], aber ohne Einheit (für "12,3 / 32,0 GB"). */
+fun fmtGbNum(mb: Double?) = if (mb == null) "–" else String.format(java.util.Locale.GERMANY, "%.1f", mb / 1024.0)
 
 /** Steuert über den PC-Server die Anzeige auf Nest Hub / Chromecast. */
 object CastClient {

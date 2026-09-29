@@ -82,12 +82,23 @@ class GaugeView @JvmOverloads constructor(
     }
 }
 
-/** Liniendiagramm für den Verlauf von CPU und GPU. */
+/**
+ * Liniendiagramm für den Verlauf von CPU und GPU.
+ * Speichert einen Wert pro Sekunde über [minutes] Minuten; beim Zeichnen werden
+ * die Werte auf die verfügbare Breite gemittelt.
+ */
 class GraphView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null,
 ) : View(context, attrs) {
 
-    private val capacity = 120
+    /** Dargestellte Zeitspanne in Minuten. */
+    var minutes: Int = 2
+        set(v) {
+            field = v.coerceAtLeast(1)
+            for ((_, q) in series) trim(q)
+            invalidate()
+        }
+    private val capacity get() = minutes * 60
     private val series = mutableListOf<Pair<Int, ArrayDeque<Float>>>()
 
     private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -111,10 +122,21 @@ class GraphView @JvmOverloads constructor(
     fun push(index: Int, value: Float) {
         val q = series[index].second
         q.addLast(value)
-        while (q.size > capacity) q.removeFirst()
+        trim(q)
+    }
+
+    /** Ersetzt den gespeicherten Verlauf einer Reihe (ältester Wert zuerst). */
+    fun setData(index: Int, values: List<Float>) {
+        val q = series[index].second
+        q.clear()
+        q.addAll(values.takeLast(capacity))
     }
 
     fun commit() = invalidate()
+
+    private fun trim(q: ArrayDeque<Float>) {
+        while (q.size > capacity) q.removeFirst()
+    }
 
     override fun onDraw(canvas: Canvas) {
         val w = width.toFloat()
@@ -125,18 +147,41 @@ class GraphView @JvmOverloads constructor(
             canvas.drawLine(0f, y, w, y, gridPaint)
             if (p in 25..75) canvas.drawText("$p", dp(2f), y - dp(2f), gridText)
         }
-        val step = w / (capacity - 1)
+        // Zeitmarken: 60 min -> alle 15 min, 15 min -> alle 5 min
+        val parts = if (minutes % 4 == 0) 4 else 3
+        for (k in 1 until parts) {
+            val x = w * k / parts
+            canvas.drawLine(x, 0f, x, h, gridPaint)
+            val mins = minutes * (parts - k) / parts.toFloat()
+            val label = if (mins == Math.round(mins).toFloat()) "-${Math.round(mins)} min"
+            else String.format(java.util.Locale.GERMANY, "-%.1f min", mins)
+            canvas.drawText(label, x + dp(2f), h - dp(3f), gridText)
+        }
+
+        // Werte in Eimer mitteln, damit höchstens ein Punkt pro ~1,5 px gezeichnet wird
+        val cap = capacity
+        val per = maxOf(1, Math.ceil(cap / (w / dp(1.5f)).toDouble()).toInt())
+        val buckets = (cap + per - 1) / per
+        val step = if (buckets > 1) w / (buckets - 1) else w
         for ((color, q) in series) {
             if (q.isEmpty()) continue
-            val offset = capacity - q.size
+            val offset = cap - q.size // fehlende (ältere) Werte liegen links
             path.reset()
             var started = false
             var firstX = 0f
             var lastX = 0f
-            q.forEachIndexed { i, v ->
-                if (v.isNaN()) return@forEachIndexed
-                val x = (offset + i) * step
-                val y = h - h * v.coerceIn(0f, 100f) / 100f
+            for (b in 0 until buckets) {
+                var sum = 0f
+                var n = 0
+                for (i in b * per until minOf(cap, (b + 1) * per)) {
+                    val qi = i - offset
+                    if (qi < 0) continue
+                    val v = q[qi]
+                    if (!v.isNaN()) { sum += v; n++ }
+                }
+                if (n == 0) continue
+                val x = b * step
+                val y = h - h * (sum / n).coerceIn(0f, 100f) / 100f
                 if (!started) { path.moveTo(x, y); started = true; firstX = x } else path.lineTo(x, y)
                 lastX = x
             }

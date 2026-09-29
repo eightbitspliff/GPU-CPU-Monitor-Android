@@ -32,8 +32,10 @@ korrigiert sie den Eintrag beim nächsten Start. Abschalten: Rechtsklick aufs Tr
 ## App-Funktionen
 
 - Große Anzeigen für **CPU** und **GPU** (Auslastung in %), dazu Takt, Temperatur, Stromverbrauch
-- Verlaufsdiagramm der letzten 2 Minuten
-- RAM- und VRAM-Belegung
+- **RAM**-Belegung direkt in der CPU-Anzeige, **VRAM**-Belegung direkt in der GPU-Anzeige
+- Zwei Verlaufsdiagramme: oben die **letzten 60 Minuten**, unten die **letzten 15 Minuten**.
+  Der Server schreibt den Verlauf mit – die Diagramme sind also sofort gefüllt, auch wenn
+  die App vorher geschlossen war
 - Bildschirm bleibt an (z.B. als Zweitdisplay neben dem PC), abschaltbar im Menü ⋮
 - Optional **dauerhafte Anzeige in der Benachrichtigungsleiste** (Menü ⋮ → „Anzeige in Benachrichtigung“),
   läuft auch weiter, wenn die App geschlossen ist
@@ -75,6 +77,7 @@ python pc_monitor_server.py
 ## Technik
 
 - HTTP `GET http://<pc-ip>:47811/stats` liefert JSON
+- HTTP `GET http://<pc-ip>:47811/history` liefert den CPU/GPU-Verlauf der letzten 60 Minuten
 - UDP-Port `47810` für die automatische Suche
 - App selbst bauen: `cd android-app && ./gradlew assembleRelease` (Android SDK nötig);
   GitHub Actions baut APK und EXE bei jedem Push automatisch.

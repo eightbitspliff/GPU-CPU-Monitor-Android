@@ -5,6 +5,7 @@ Liefert CPU-, RAM- und GPU-Auslastung dieses PCs als JSON im lokalen Netzwerk,
 damit die Android-App "PC Monitor" sie anzeigen kann.
 
   HTTP  GET http://<pc-ip>:47811/stats   -> aktuelle Werte als JSON
+  HTTP  GET http://<pc-ip>:47811/history -> CPU/GPU-Verlauf der letzten 60 Minuten
   HTTP  GET http://<pc-ip>:47811/        -> Dashboard (Browser / Nest Hub)
   HTTP  GET/POST /cast…                  -> Anzeige auf Nest Hub/Chromecast steuern
   UDP   Port 47810                       -> automatische Suche der App
@@ -22,6 +23,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -38,6 +40,7 @@ HTTP_PORT = int(os.environ.get("PCMON_PORT", "47811"))
 DISCOVERY_PORT = 47810
 DISCOVERY_REQUEST = b"PCMON_DISCOVER"
 SAMPLE_INTERVAL = 1.0
+HISTORY_SECONDS = 3600  # Verlauf für die Diagramme (60 Minuten)
 IS_WINDOWS = os.name == "nt"
 NO_WINDOW = 0x08000000 if IS_WINDOWS else 0  # CREATE_NO_WINDOW
 
@@ -284,6 +287,7 @@ class Sampler(threading.Thread):
         self.cpu_name = cpu_name()
         self.hostname = socket.gethostname()
         self.data = {}
+        self.history = deque(maxlen=int(HISTORY_SECONDS / SAMPLE_INTERVAL))  # (cpu, gpu)
         psutil.cpu_percent(percpu=True)  # erste Messung initialisieren
 
     def run(self):
@@ -321,12 +325,24 @@ class Sampler(threading.Thread):
             "gpus": self.gpu.read(),
             "gpu_source": self.gpu.source,
         }
+        gpus = data["gpus"]
+        gpu_usage = gpus[0].get("usage") if gpus else None
         with self.lock:
             self.data = data
+            self.history.append((total, gpu_usage))
 
     def snapshot(self):
         with self.lock:
             return self.data
+
+    def history_snapshot(self):
+        with self.lock:
+            items = list(self.history)
+        return {
+            "interval": SAMPLE_INTERVAL,
+            "cpu": [c for c, _ in items],
+            "gpu": [g for _, g in items],
+        }
 
 
 # --------------------------------------------------------------------------- Netzwerk
@@ -353,6 +369,8 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if url.path == "/stats":
             self._json(sampler.snapshot())
+        elif url.path == "/history":
+            self._json(sampler.history_snapshot())
         elif url.path in ("/", "/index.html"):
             self._send(200, DASHBOARD_HTML, "text/html; charset=utf-8")
         elif url.path == "/cast":

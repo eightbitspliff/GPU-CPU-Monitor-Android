@@ -28,7 +28,8 @@ class MainActivity : Activity() {
     private lateinit var cpuInfo: TextView
     private lateinit var gpuName: TextView
     private lateinit var gpuInfo: TextView
-    private lateinit var graph: GraphView
+    private lateinit var graphLong: GraphView
+    private lateinit var graphShort: GraphView
     private lateinit var ramText: TextView
     private lateinit var ramBar: BarView
     private lateinit var vramText: TextView
@@ -38,6 +39,8 @@ class MainActivity : Activity() {
     private var cpuSeries = 0
     private var gpuSeries = 0
     private var failures = 0
+    /** Adresse, für die der Verlauf schon vom Server geholt wurde (bzw. gerade geholt wird). */
+    private var historyFor: String? = null
     private var searching = false
 
     private val poller = Poller({ Prefs.address(this) }, 1000L) { result ->
@@ -56,7 +59,8 @@ class MainActivity : Activity() {
         cpuInfo = findViewById(R.id.cpuInfo)
         gpuName = findViewById(R.id.gpuName)
         gpuInfo = findViewById(R.id.gpuInfo)
-        graph = findViewById(R.id.graph)
+        graphLong = findViewById(R.id.graphLong)
+        graphShort = findViewById(R.id.graphShort)
         ramText = findViewById(R.id.ramText)
         ramBar = findViewById(R.id.ramBar)
         vramText = findViewById(R.id.vramText)
@@ -69,8 +73,12 @@ class MainActivity : Activity() {
         gpuGauge.label = "GPU"; gpuGauge.color = gpuColor
         ramBar.color = getColor(R.color.ram)
         vramBar.color = gpuColor
-        cpuSeries = graph.addSeries(cpuColor)
-        gpuSeries = graph.addSeries(gpuColor)
+        graphLong.minutes = 60
+        graphShort.minutes = 15
+        for (g in listOf(graphLong, graphShort)) {
+            cpuSeries = g.addSeries(cpuColor)
+            gpuSeries = g.addSeries(gpuColor)
+        }
 
         searchButton.setOnClickListener { search() }
         findViewById<View>(R.id.statusBox).setOnClickListener { askAddress() }
@@ -86,6 +94,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         updateHostLabel()
+        historyFor = null // während die App pausiert war, hat der Server weiter mitgeschrieben
         poller.start()
     }
 
@@ -157,12 +166,12 @@ class MainActivity : Activity() {
                 g.powerW?.let { "${Math.round(it)} W" },
             ).joinToString("  ·  ")
 
-            ramText.text = "RAM  ${fmtGb(s.ramUsedMb)} / ${fmtGb(s.ramTotalMb)}  (${fmtPct(s.ramUsage)})"
+            ramText.text = "RAM  ${fmtGbNum(s.ramUsedMb)} / ${fmtGb(s.ramTotalMb)}  ·  ${fmtPct(s.ramUsage)}"
             ramBar.setValue(s.ramUsage)
             if (g?.memUsedMb != null) {
                 val total = g.memTotalMb
                 val pct = if (total != null && total > 0) g.memUsedMb / total * 100 else null
-                vramText.text = if (total != null) "VRAM  ${fmtGb(g.memUsedMb)} / ${fmtGb(total)}  (${fmtPct(pct)})"
+                vramText.text = if (total != null) "VRAM  ${fmtGbNum(g.memUsedMb)} / ${fmtGb(total)}  ·  ${fmtPct(pct)}"
                 else "VRAM  ${fmtGb(g.memUsedMb)} belegt"
                 vramBar.setValue(pct)
             } else {
@@ -170,9 +179,8 @@ class MainActivity : Activity() {
                 vramBar.setValue(null)
             }
 
-            graph.push(cpuSeries, s.cpuUsage.toFloat())
-            graph.push(gpuSeries, g?.usage?.toFloat() ?: Float.NaN)
-            graph.commit()
+            pushGraphs(s.cpuUsage.toFloat(), g?.usage?.toFloat() ?: Float.NaN)
+            if (historyFor != addr) loadHistory(addr)
         }.onFailure {
             failures++
             statusText.setTextColor(getColor(R.color.error))
@@ -181,10 +189,35 @@ class MainActivity : Activity() {
                 cpuGauge.setValue(null)
                 gpuGauge.setValue(null)
             }
-            graph.push(cpuSeries, Float.NaN)
-            graph.push(gpuSeries, Float.NaN)
+            pushGraphs(Float.NaN, Float.NaN)
+        }
+    }
+
+    private fun pushGraphs(cpu: Float, gpu: Float) {
+        for (graph in listOf(graphLong, graphShort)) {
+            graph.push(cpuSeries, cpu)
+            graph.push(gpuSeries, gpu)
             graph.commit()
         }
+    }
+
+    /** Holt den Verlauf der letzten 60 Minuten vom Server, damit die Diagramme sofort gefüllt sind. */
+    private fun loadHistory(addr: String) {
+        historyFor = addr
+        Thread {
+            val result = runCatching { StatsClient.fetchHistory(addr) }
+            runOnUiThread {
+                if (isFinishing || Prefs.address(this) != addr) return@runOnUiThread
+                result.onFailure { historyFor = null } // beim nächsten Abruf erneut versuchen
+                val h = result.getOrNull() ?: return@runOnUiThread
+                if (h.cpu.isEmpty()) return@runOnUiThread
+                for (graph in listOf(graphLong, graphShort)) {
+                    graph.setData(cpuSeries, h.cpu)
+                    graph.setData(gpuSeries, h.gpu)
+                    graph.commit()
+                }
+            }
+        }.start()
     }
 
     private fun search() {

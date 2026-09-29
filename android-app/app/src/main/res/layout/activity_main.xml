@@ -108,6 +108,23 @@
                     android:text=""
                     android:textColor="@color/text"
                     android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/ramText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="RAM –"
+                    android:textColor="@color/text"
+                    android:textSize="12sp" />
+
+                <com.pcmonitor.app.BarView
+                    android:id="@+id/ramBar"
+                    android:layout_width="match_parent"
+                    android:layout_height="8dp"
+                    android:layout_marginTop="4dp" />
             </LinearLayout>
 
             <LinearLayout
@@ -145,6 +162,23 @@
                     android:text=""
                     android:textColor="@color/text"
                     android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/vramText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="VRAM –"
+                    android:textColor="@color/text"
+                    android:textSize="12sp" />
+
+                <com.pcmonitor.app.BarView
+                    android:id="@+id/vramBar"
+                    android:layout_width="match_parent"
+                    android:layout_height="8dp"
+                    android:layout_marginTop="4dp" />
             </LinearLayout>
         </LinearLayout>
 
@@ -155,7 +189,7 @@
             android:layout_weight="1"
             android:orientation="vertical">
 
-            <!-- Verlauf -->
+            <!-- Verlauf: oben 60 Minuten, unten 15 Minuten -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
@@ -168,55 +202,40 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Verlauf (2 Minuten)"
+                    android:text="Verlauf (60 Minuten)"
                     android:textColor="@color/muted"
                     android:textSize="12sp" />
 
                 <com.pcmonitor.app.GraphView
-                    android:id="@+id/graph"
+                    android:id="@+id/graphLong"
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
                     android:layout_marginTop="6dp"
                     android:layout_weight="1" />
             </LinearLayout>
 
-            <!-- RAM / VRAM -->
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="0dp"
                 android:layout_marginTop="12dp"
+                android:layout_weight="1"
                 android:background="@drawable/card_bg"
                 android:orientation="vertical"
-                android:padding="12dp">
+                android:padding="10dp">
 
                 <TextView
-                    android:id="@+id/ramText"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="RAM –"
-                    android:textColor="@color/text"
-                    android:textSize="13sp" />
+                    android:text="Verlauf (15 Minuten)"
+                    android:textColor="@color/muted"
+                    android:textSize="12sp" />
 
-                <com.pcmonitor.app.BarView
-                    android:id="@+id/ramBar"
+                <com.pcmonitor.app.GraphView
+                    android:id="@+id/graphShort"
                     android:layout_width="match_parent"
-                    android:layout_height="8dp"
-                    android:layout_marginTop="4dp" />
-
-                <TextView
-                    android:id="@+id/vramText"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="VRAM –"
-                    android:textColor="@color/text"
-                    android:textSize="13sp" />
-
-                <com.pcmonitor.app.BarView
-                    android:id="@+id/vramBar"
-                    android:layout_width="match_parent"
-                    android:layout_height="8dp"
-                    android:layout_marginTop="4dp" />
+                    android:layout_height="0dp"
+                    android:layout_marginTop="6dp"
+                    android:layout_weight="1" />
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>
