@@ -76,6 +76,8 @@ jobs:
           $j = $lines[-1] | ConvertFrom-Json
           if ($j.error) { throw "Sensor-Modul meldet Fehler: $($j.error)" }
           if ($null -eq $j.admin) { throw "Sensor-Modul liefert keine Daten" }
+      - name: Netzwerkadapter anzeigen
+        run: python -c "import psutil; print(psutil.net_io_counters(pernic=True)); print({n: s.isup for n, s in psutil.net_if_stats().items()})"
       - name: EXE bauen
         run: |
           python make_icon.py
@@ -99,7 +101,10 @@ jobs:
             Write-Host "CPU $($r.cpu.usage) %  RAM $($r.ram.usage) %  GPU-Quelle $($r.gpu_source)"
             Write-Host "Kerntakte: $($r.cpu.core_freq_mhz -join ', ') MHz  CPU-Temp: $($r.cpu.temp_c)  CPU-Leistung: $($r.cpu.power_w) W"
             Write-Host "Temp-Hinweis: $($r.cpu.temp_note)  GPUs: $($r.gpus | ConvertTo-Json -Compress)"
-            Write-Host "Netzwerk: $($r.net | ConvertTo-Json -Compress -Depth 5)"
+            Start-Sleep -Seconds 3
+            $r2 = Invoke-RestMethod http://127.0.0.1:47811/stats -TimeoutSec 3
+            Write-Host "Netzwerk: $($r2.net | ConvertTo-Json -Compress -Depth 5)"
+            if (-not $r2.net.traffic) { throw "Netzwerk-Traffic fehlt" }
             if ($r.cpu.temp_note -eq "Sensor-Modul fehlt im PC-Server") { throw $r.cpu.temp_note }
             if (-not $r.cpu.core_freq_mhz -or $r.cpu.core_freq_mhz.Count -ne $r.cpu.cores.Count) { throw "Takt je CPU-Kern fehlt" }
             $html = Invoke-WebRequest http://127.0.0.1:47811/ -UseBasicParsing -TimeoutSec 5

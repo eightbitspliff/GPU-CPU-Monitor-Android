@@ -20,7 +20,7 @@ IS_WINDOWS = os.name == "nt"
 NO_WINDOW = 0x08000000 if IS_WINDOWS else 0
 
 _WIFI_NAME = re.compile(r"wlan|wi-?fi|wireless|funk|^wl", re.IGNORECASE)
-_VIRTUAL_NAME = re.compile(r"loopback|^lo$|vethernet|virtual|vmware|vbox|hyper-v|docker|"
+_VIRTUAL_NAME = re.compile(r"vethernet|virtual|vmware|vbox|hyper-v|docker|"
                            r"tailscale|zerotier|wireguard|bluetooth|isatap|teredo|pseudo",
                            re.IGNORECASE)
 
@@ -296,13 +296,16 @@ class NetSensors:
         if last is None or now - last[0] <= 0:
             return None
         dt = now - last[0]
-        rates = {}
+        rates, virtual = {}, {}
         for n, (sent, recv) in cur.items():
             prev = last[1].get(n)
             st = stats.get(n)
-            if prev is None or (st is not None and not st.isup) or _VIRTUAL_NAME.search(n):
+            if prev is None or (st is not None and not st.isup) or re.search(r"loopback|^lo$", n, re.I):
                 continue
-            rates[n] = (max(0, recv - prev[1]) / dt, max(0, sent - prev[0]) / dt)
+            r = (max(0, recv - prev[1]) / dt, max(0, sent - prev[0]) / dt)
+            (virtual if _VIRTUAL_NAME.search(n) else rates)[n] = r
+        if not rates:
+            rates = virtual  # nur virtuelle Adapter (z.B. VM) -> die nehmen
         if not rates:
             return None
         wifi = [n for n in rates if _WIFI_NAME.search(n)]
