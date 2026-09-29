@@ -391,12 +391,21 @@ class Sampler(threading.Thread):
                 "usage": round(vm.percent, 1),
                 **self.ram_bw.read(),
             },
-            "gpus": merge_gpus(self.gpu.read(), self.lhm.gpus()),
+            "gpus": self._with_vram_bw(merge_gpus(self.gpu.read(), self.lhm.gpus())),
             "net": self.net.read(),
             "gpu_source": self.gpu.source,
         }
         with self.lock:
             self.data = data
+
+    @staticmethod
+    def _with_vram_bw(gpus):
+        """Aktuelle VRAM-Bandbreite ergänzen, wo nur Controller-Last und Maximum bekannt sind."""
+        for g in gpus:
+            if g.get("vram_bw_gbs") is None and g.get("vram_ctrl_pct") is not None \
+                    and g.get("vram_bw_max_gbs") is not None:
+                g["vram_bw_gbs"] = round(g["vram_ctrl_pct"] / 100 * g["vram_bw_max_gbs"], 1)
+        return gpus
 
     def snapshot(self):
         with self.lock:

@@ -285,8 +285,12 @@ def run(sampler, caster, ips, port, start_hidden=False):
                 cur = ram.get("bandwidth_gbs")
                 bw_parts.append("RAM-Bandbreite: " + (f"{cur:.1f} / " if cur is not None else "aktuell – (HWiNFO mit Shared Memory starten) / max. ")
                                 + f"{ram.get('bandwidth_max_gbs') or '–'} GB/s" + (f" ({ram['bandwidth_desc']})" if ram.get("bandwidth_desc") else ""))
-            if g0.get("vram_bw_gbs") is not None:
-                bw_parts.append(f"VRAM-Bandbreite: {g0['vram_bw_gbs']:.0f} / {g0.get('vram_bw_max_gbs') or '–'} GB/s")
+            if g0.get("vram_bw_gbs") is not None or g0.get("vram_bw_max_gbs") is not None:
+                cur = g0.get("vram_bw_gbs")
+                ctrl = g0.get("vram_ctrl_pct")
+                bw_parts.append("VRAM-Bandbreite: " + (f"{cur:.0f}" if cur is not None else "–")
+                                + f" / {g0.get('vram_bw_max_gbs') or '–'} GB/s"
+                                + (f" (Controller {round(ctrl)} %)" if ctrl is not None else " (Controller-Last fehlt)"))
             elif g0.get("vram_ctrl_pct") is not None:
                 bw_parts.append(f"VRAM-Controller: {round(g0['vram_ctrl_pct'])} %")
             bw_var.set("\n".join(bw_parts))
