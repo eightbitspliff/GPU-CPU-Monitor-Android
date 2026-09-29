@@ -19,29 +19,32 @@ DASHBOARD_HTML = r"""<!doctype html>
   html,body { margin:0; height:100%; background:var(--bg); color:var(--text);
     font-family:"Google Sans",Roboto,"Segoe UI",Arial,sans-serif; overflow:hidden; }
   body.cast { cursor:none; }
-  .wrap { height:100%; display:flex; flex-direction:column; padding:2.2vh 2.2vw; gap:2vh; }
+  .wrap { height:100%; display:flex; flex-direction:column; padding:2vh 1.8vw; gap:1.6vh; }
   header { display:flex; align-items:baseline; gap:1.2vw; }
-  #host { font-size:3.6vh; font-weight:600; }
-  #status { font-size:2.2vh; color:var(--muted); }
+  #host { font-size:min(5vh, 4.5vw); font-weight:600; }
+  #status { font-size:min(3.4vh, 3vw); color:var(--muted); }
   #status.err { color:var(--err); }
-  .main { flex:1; min-height:0; display:grid; gap:2vh 1.6vw;
-    grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1.5fr); grid-template-rows: 1fr 1fr; }
-  .card { background:var(--card); border-radius:2vh; padding:1.8vh 1.4vw; min-height:0; min-width:0; }
+  .main { flex:1; min-height:0; display:grid; gap:1.8vh 1.4vw;
+    grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1.4fr); grid-template-rows: 1fr 1fr; }
+  .card { background:var(--card); border-radius:2vh; padding:1.6vh 1.3vw; min-height:0; min-width:0; }
   .gauge { grid-row:1 / 3; display:flex; flex-direction:column; align-items:center; justify-content:center; }
   .gauge svg { width:100%; flex:1; min-height:0; }
-  .gauge .name { color:var(--muted); font-size:1.9vh; white-space:nowrap; overflow:hidden;
+  .gauge .name { color:var(--muted); font-size:min(3.2vh, 2.4vw); white-space:nowrap; overflow:hidden;
     text-overflow:ellipsis; max-width:100%; text-align:center; }
-  .gauge .info { font-size:2.4vh; margin-top:.6vh; min-height:3vh; text-align:center; }
+  .gauge .info { font-size:min(4.4vh, 3.2vw); font-weight:600; margin-top:.4vh; min-height:5vh; text-align:center;
+    white-space:nowrap; }
   .track { fill:none; stroke:var(--track); stroke-width:8; stroke-linecap:round; }
   .arc { fill:none; stroke-width:8; stroke-linecap:round; transition:stroke-dasharray .6s ease-out; }
-  .val { font-size:19px; font-weight:600; fill:var(--text); text-anchor:middle; }
-  .lbl { font-size:8.5px; fill:var(--muted); text-anchor:middle; letter-spacing:.5px; }
+  .val { font-size:21px; font-weight:700; fill:var(--text); text-anchor:middle; }
+  .lbl { font-size:11px; font-weight:600; fill:var(--muted); text-anchor:middle; letter-spacing:.5px; }
   .graph { display:flex; flex-direction:column; }
-  .graph .t { color:var(--muted); font-size:1.9vh; margin-bottom:1vh; }
+  .graph .t { color:var(--muted); font-size:min(3.4vh, 3vw); font-weight:600; margin-bottom:.6vh; }
   .graph canvas { flex:1; min-height:0; width:100%; }
-  .gauge .mem { width:100%; font-size:min(2.2vh, 2.5vw); margin-top:1.6vh; white-space:nowrap; overflow:hidden;
-    text-overflow:ellipsis; }
-  .bar { height:1.2vh; background:var(--track); border-radius:1vh; margin-top:.8vh; overflow:hidden; }
+  .gauge .mem { width:100%; margin-top:1.8vh; white-space:nowrap; }
+  .mem .top { display:flex; justify-content:space-between; align-items:baseline;
+    font-size:min(4.2vh, 3vw); font-weight:600; }
+  .mem .det { font-size:min(3.4vh, 2.5vw); color:var(--muted); margin-top:.6vh; overflow:hidden; text-overflow:ellipsis; }
+  .bar { height:1.8vh; background:var(--track); border-radius:1vh; margin-top:.8vh; overflow:hidden; }
   .bar > div { height:100%; width:0; border-radius:1vh; transition:width .6s ease-out; }
   @media (max-aspect-ratio: 1/1) {
     .main { grid-template-columns:minmax(0,1fr) minmax(0,1fr); grid-template-rows: 1.3fr 1fr 1fr; }
@@ -59,14 +62,16 @@ DASHBOARD_HTML = r"""<!doctype html>
         <path class="arc" d="M21.7 78.3 A40 40 0 1 1 78.3 78.3" pathLength="100" stroke="var(--cpu)" stroke-dasharray="0 100"/>
         <text class="val" x="50" y="56">–</text><text class="lbl" x="50" y="84">CPU</text></svg>
       <div class="name">–</div><div class="info"></div>
-      <div class="mem"><span id="ramT">RAM –</span><div class="bar"><div id="ramB" style="background:var(--ram)"></div></div></div>
+      <div class="mem"><div class="top"><span>RAM</span><span id="ramP">–</span></div>
+        <div class="bar"><div id="ramB" style="background:var(--ram)"></div></div><div class="det" id="ramT">–</div></div>
     </div>
     <div class="card gauge" id="gpu">
       <svg viewBox="0 0 100 92"><path class="track" d="M21.7 78.3 A40 40 0 1 1 78.3 78.3" pathLength="100"/>
         <path class="arc" d="M21.7 78.3 A40 40 0 1 1 78.3 78.3" pathLength="100" stroke="var(--gpu)" stroke-dasharray="0 100"/>
         <text class="val" x="50" y="56">–</text><text class="lbl" x="50" y="84">GPU</text></svg>
       <div class="name">–</div><div class="info"></div>
-      <div class="mem"><span id="vramT">VRAM –</span><div class="bar"><div id="vramB" style="background:var(--gpu)"></div></div></div>
+      <div class="mem"><div class="top"><span>VRAM</span><span id="vramP">–</span></div>
+        <div class="bar"><div id="vramB" style="background:var(--gpu)"></div></div><div class="det" id="vramT">–</div></div>
     </div>
     <div class="card graph"><div class="t">Verlauf (60 Minuten)</div><canvas id="graphLong" data-min="60"></canvas></div>
     <div class="card graph"><div class="t">Verlauf (15 Minuten)</div><canvas id="graphShort" data-min="15"></canvas></div>
@@ -101,18 +106,20 @@ DASHBOARD_HTML = r"""<!doctype html>
     g.clearRect(0, 0, w, h);
     var mins = +c.getAttribute("data-min"), cap = mins * 60;
     g.strokeStyle = "#262C36"; g.lineWidth = 1; g.fillStyle = "#8A94A6";
-    g.font = "11px sans-serif";
+    // gut lesbar auf dem 7"-Display des Nest Hub (1024x600)
+    var fs = Math.max(12, Math.min(18, Math.round(window.innerHeight * 0.028)));
+    g.font = "600 " + fs + "px sans-serif";
     [0, 25, 50, 75, 100].forEach(function (p) {
       var y = h - h * p / 100;
       g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
-      if (p > 0 && p < 100) g.fillText(p, 2, y - 3);
+      if (p > 0 && p < 100) g.fillText(p, 3, y - 4);
     });
     // Zeitmarken: 60 min -> alle 15 min, 15 min -> alle 5 min
     var parts = mins % 4 === 0 ? 4 : 3;
     for (var k = 1; k < parts; k++) {
       var x = w * k / parts, m = mins * (parts - k) / parts;
       g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke();
-      g.fillText("-" + m + " min", x + 3, h - 4);
+      g.fillText("-" + m + " min", x + 4, h - 5);
     }
     // Werte in Eimer mitteln: höchstens ein Punkt pro ~1,5 px
     var per = Math.max(1, Math.ceil(cap / (w / 1.5))), buckets = Math.ceil(cap / per);
@@ -166,14 +173,15 @@ DASHBOARD_HTML = r"""<!doctype html>
     if (gpu && gpu.temp_c != null) gi.push(Math.round(gpu.temp_c) + " °C");
     if (gpu && gpu.power_w != null) gi.push(Math.round(gpu.power_w) + " W");
     setGauge("gpu", gpu ? gpu.usage : null, gpu ? gpu.name : "Keine GPU-Daten", gi.join("  ·  "));
-    $("ramT").textContent = "RAM  " + num(ram.used_mb) + " / " + gb(ram.total_mb) + "  ·  " + pct(ram.usage);
+    $("ramP").textContent = pct(ram.usage);
+    $("ramT").textContent = num(ram.used_mb) + " / " + gb(ram.total_mb);
     $("ramB").style.width = ram.usage + "%";
     if (gpu && gpu.mem_used_mb != null) {
       var t = gpu.mem_total_mb, p = t ? gpu.mem_used_mb / t * 100 : null;
-      $("vramT").textContent = t ? "VRAM  " + num(gpu.mem_used_mb) + " / " + gb(t) + "  ·  " + pct(p)
-                                 : "VRAM  " + gb(gpu.mem_used_mb) + " belegt";
+      $("vramP").textContent = pct(p);
+      $("vramT").textContent = t ? num(gpu.mem_used_mb) + " / " + gb(t) : gb(gpu.mem_used_mb) + " belegt";
       $("vramB").style.width = (p || 0) + "%";
-    } else { $("vramT").textContent = "VRAM –"; $("vramB").style.width = "0"; }
+    } else { $("vramP").textContent = "–"; $("vramT").textContent = "–"; $("vramB").style.width = "0"; }
     push(hist.cpu, cpu.usage); push(hist.gpu, gpu ? gpu.usage : null);
     draw();
   }
