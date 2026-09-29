@@ -77,7 +77,8 @@ jobs:
           if ($j.error) { throw "Sensor-Modul meldet Fehler: $($j.error)" }
           if ($null -eq $j.admin) { throw "Sensor-Modul liefert keine Daten" }
       - name: Netzwerkadapter anzeigen
-        run: python -c "import psutil; print(psutil.net_io_counters(pernic=True)); print({n: s.isup for n, s in psutil.net_if_stats().items()})"
+        run: |
+          python -c "import psutil; print(psutil.net_io_counters(pernic=True)); print({n: s.isup for n, s in psutil.net_if_stats().items()})"
       - name: EXE bauen
         run: |
           python make_icon.py
