@@ -162,9 +162,9 @@ class MainActivity : Activity() {
             cpuName.text = s.cpuName
             cpuInfo.text = listOfNotNull(
                 s.cpuFreqMhz?.let { String.format(Locale.GERMANY, "%.2f GHz", it / 1000.0) },
-                s.cpuTempC?.let { "${Math.round(it)} °C" } ?: "– °C",
                 s.cpuPowerW?.let { "${Math.round(it)} W" },
-            ).joinToString("  ·  ")
+                s.cpuTempC?.let { "${Math.round(it)} °C" } ?: "– °C",
+            ).joinToString("\n")
 
             val note = if (s.cpuTempC == null) s.cpuTempNote else null
             cpuTempNote.text = note ?: ""
@@ -181,10 +181,10 @@ class MainActivity : Activity() {
             gpuGauge.setValue(g?.usage)
             gpuName.text = g?.name ?: "Keine GPU-Daten"
             gpuInfo.text = if (g == null) "" else listOfNotNull(
-                g.powerW?.let { "${Math.round(it)} W" },
                 g.clockMhz?.let { "${Math.round(it)} MHz" },
+                g.powerW?.let { "${Math.round(it)} W" },
                 g.tempC?.let { "${Math.round(it)} °C" },
-            ).joinToString("  ·  ")
+            ).joinToString("\n")
 
             ramText.text = "RAM  ${fmtGb(s.ramUsedMb)} / ${fmtGb(s.ramTotalMb)}  (${fmtPct(s.ramUsage)})"
             ramBar.setValue(s.ramUsage)

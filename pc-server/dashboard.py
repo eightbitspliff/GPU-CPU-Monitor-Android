@@ -34,7 +34,7 @@ DASHBOARD_HTML = r"""<!doctype html>
   .gauge .name { color:var(--muted); font-size:3.6vh; white-space:nowrap; overflow:hidden;
     text-overflow:ellipsis; max-width:100%; text-align:center; }
   .gauge .info { font-size:5vh; line-height:1.25; margin-top:.6vh; min-height:5.5vh; text-align:center;
-    display:flex; flex-wrap:wrap; justify-content:center; gap:0 1.2vw; }
+    display:flex; flex-direction:column; align-items:center; }
   .gauge .info span { white-space:nowrap; }
   .track { fill:none; stroke:var(--track); stroke-width:8; stroke-linecap:round; }
   .arc { fill:none; stroke-width:8; stroke-linecap:round; transition:stroke-dasharray .6s ease-out; }
@@ -139,12 +139,12 @@ DASHBOARD_HTML = r"""<!doctype html>
     var cpu = d.cpu, ram = d.ram, gpu = (d.gpus && d.gpus[0]) || null;
     var ci = [];
     if (cpu.freq_mhz != null) ci.push((cpu.freq_mhz / 1000).toFixed(2).replace(".", ",") + " GHz");
-    if (cpu.temp_c != null) ci.push(Math.round(cpu.temp_c) + " °C");
     if (cpu.power_w != null) ci.push(Math.round(cpu.power_w) + " W");
+    if (cpu.temp_c != null) ci.push(Math.round(cpu.temp_c) + " °C");
     setGauge("cpu", cpu.usage, cpu.name, ci);
     var gi = [];
-    if (gpu && gpu.power_w != null) gi.push(Math.round(gpu.power_w) + " W");
     if (gpu && gpu.clock_mhz != null) gi.push(Math.round(gpu.clock_mhz) + " MHz");
+    if (gpu && gpu.power_w != null) gi.push(Math.round(gpu.power_w) + " W");
     if (gpu && gpu.temp_c != null) gi.push(Math.round(gpu.temp_c) + " °C");
     setGauge("gpu", gpu ? gpu.usage : null, gpu ? gpu.name : "Keine GPU-Daten", gi);
     $("ramT").textContent = "RAM  " + gb(ram.used_mb) + " / " + gb(ram.total_mb) + "  (" + pct(ram.usage) + ")";
