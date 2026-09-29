@@ -619,9 +619,35 @@ def local_ips():
     return sorted(ips)
 
 
+def watch_launcher():
+    """Die EXE (PyInstaller onefile) besteht aus zwei Prozessen: einem Startprozess und
+    diesem Python-Prozess. Wird der Startprozess beendet (z.B. im Task-Manager),
+    beendet sich auch dieser Prozess samt Hintergrundprozessen."""
+    if not getattr(sys, "frozen", False):
+        return
+    try:
+        parent = psutil.Process().parent()
+        exe = os.path.basename(sys.executable).lower()
+        if parent is None or parent.name().lower() != exe:
+            return  # kein onefile-Startprozess
+    except Exception:
+        return
+
+    def loop():
+        while True:
+            time.sleep(2)
+            try:
+                if not parent.is_running():
+                    shutdown()
+            except Exception:
+                shutdown()
+    threading.Thread(target=loop, daemon=True, name="launcher-watch").start()
+
+
 def start_backend():
     """Startet Messung, UDP-Suche und HTTP-Server im Hintergrund."""
     global sampler, caster
+    watch_launcher()
     sampler = Sampler()
     sampler.sample()
     sampler.start()
