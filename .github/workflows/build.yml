@@ -105,6 +105,7 @@ jobs:
         run: |
           # verwaistes Skript einer alten Version nachstellen – die EXE muss es beenden
           $old = Start-Process powershell -ArgumentList "-NoProfile", "-Command", "while (`$true) { `$x = 'GPUPerformanceCounters_GPUEngine'; Start-Sleep 1 }" -PassThru -WindowStyle Hidden
+          trap { Write-Host "::error::$($_.Exception.Message)"; break }
           $p = Start-Process -FilePath dist\PCMonitorServer.exe -ArgumentList "--tray" -PassThru
           $r = $null
           for ($i = 0; $i -lt 30 -and -not $r; $i++) {
@@ -144,7 +145,10 @@ jobs:
             if (-not $c.available) { throw "Cast-Unterstützung fehlt in der EXE" }
             Start-Sleep -Seconds 2
             $t = Get-ScheduledTask -TaskName PCMonitorServer -ErrorAction SilentlyContinue
+            $log = (Get-Content "$env:APPDATA\PCMonitor\autostart.log" -Raw -ErrorAction SilentlyContinue) -replace "`r?`n", " | "
+            Write-Host "::warning::autostart.log: $log"
             if (-not $t) { throw "Autostart-Aufgabe fehlt" }
+            Write-Host ("::warning::Autostart: {0} {1} RunLevel={2} Limit={3} User={4}" -f $t.Actions[0].Execute, $t.Actions[0].Arguments, $t.Principal.RunLevel, $t.Settings.ExecutionTimeLimit, $t.Principal.UserId)
             $a = $t.Actions[0]
             Write-Host "Autostart: $($a.Execute) $($a.Arguments)  RunLevel=$($t.Principal.RunLevel)  Limit=$($t.Settings.ExecutionTimeLimit)  Trigger=$($t.Triggers[0].CimClass.CimClassName)"
             if ($a.Execute -notmatch "PCMonitorServer\.exe" -or $a.Arguments -ne "--tray") { throw "Autostart-Aufgabe zeigt falsch" }

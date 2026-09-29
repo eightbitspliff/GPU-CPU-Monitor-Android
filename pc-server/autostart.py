@@ -29,9 +29,38 @@ except ImportError:  # kein Windows
 _NO_WINDOW = 0x08000000  # CREATE_NO_WINDOW
 
 
+def _log(text):
+    """Letzten Fehler festhalten (%APPDATA%\\PCMonitor\\autostart.log)."""
+    try:
+        base = os.environ.get("APPDATA") or os.path.expanduser("~")
+        folder = os.path.join(base, "PCMonitor")
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, "autostart.log"), "w", encoding="utf-8") as f:
+            f.write(text)
+    except Exception:
+        pass
+
+
+def _decode(b):
+    if not b:
+        return ""
+    if b[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return b.decode("utf-16", "ignore")
+    for enc in ("utf-8", "cp850", "cp1252"):
+        try:
+            return b.decode(enc)
+        except UnicodeDecodeError:
+            pass
+    return b.decode("latin-1", "ignore")
+
+
 def _schtasks(*args):
-    return subprocess.run(["schtasks", *args], capture_output=True,
-                          creationflags=_NO_WINDOW if os.name == "nt" else 0)
+    try:
+        return subprocess.run(["schtasks", *args], capture_output=True,
+                              creationflags=_NO_WINDOW if os.name == "nt" else 0)
+    except Exception as e:
+        _log(f"schtasks nicht startbar: {e}")
+        raise
 
 
 def _xml_escape(s):
@@ -104,8 +133,7 @@ def is_enabled():
     r = _schtasks("/Query", "/TN", TASK_NAME, "/XML")
     if r.returncode != 0:
         return False
-    xml = r.stdout.decode("utf-16", "ignore") if r.stdout[:2] in (b"\xff\xfe", b"\xfe\xff") \
-        else r.stdout.decode("utf-8", "ignore")
+    xml = _decode(r.stdout)
     return sys.executable.lower() in xml.lower() and "--tray" in xml
 
 
@@ -120,7 +148,10 @@ def set_enabled(on):
     try:
         with os.fdopen(fd, "w", encoding="utf-16") as f:
             f.write(_task_xml())
-        return _schtasks("/Create", "/TN", TASK_NAME, "/XML", path, "/F").returncode == 0
+        r = _schtasks("/Create", "/TN", TASK_NAME, "/XML", path, "/F")
+        _log(f"schtasks /Create Exitcode {r.returncode}\n{_decode(r.stdout)}\n{_decode(r.stderr)}\n"
+             f"Benutzer: {_user()}\nEXE: {sys.executable}\n")
+        return r.returncode == 0
     finally:
         try:
             os.remove(path)
