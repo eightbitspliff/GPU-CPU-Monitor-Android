@@ -37,6 +37,7 @@ except ImportError:
 from cpu_sensors import CpuSensors
 from lhm_helper import LhmHelper, merge_gpus
 from net_sensors import NetSensors
+from mem_bandwidth import RamBandwidth
 
 HTTP_PORT = int(os.environ.get("PCMON_PORT", "47811"))
 DISCOVERY_PORT = 47810
@@ -133,6 +134,26 @@ class GpuReader:
             pass
         return {k: v for k, v in out.items() if 0 < v < 2000}
 
+    def _nvml_bandwidth(self, h, gpu):
+        """VRAM-Bandbreite: Maximum aus Speichertakt x Busbreite, aktuell ~ Auslastung des
+        Speicher-Controllers x Maximum beim aktuellen Takt (GDDR überträgt 2x pro NVML-Takt)."""
+        n = self._nvml
+        try:
+            bus = n.nvmlDeviceGetMemoryBusWidth(h)  # Bit
+        except Exception:
+            return
+        try:
+            clk_max = n.nvmlDeviceGetMaxClockInfo(h, n.NVML_CLOCK_MEM)
+            gpu["vram_bw_max_gbs"] = round(clk_max * 2 * bus / 8 / 1000, 1)
+        except Exception:
+            pass
+        try:
+            clk = n.nvmlDeviceGetClockInfo(h, n.NVML_CLOCK_MEM)
+            if gpu.get("vram_ctrl_pct") is not None:
+                gpu["vram_bw_gbs"] = round(gpu["vram_ctrl_pct"] / 100 * clk * 2 * bus / 8 / 1000, 1)
+        except Exception:
+            pass
+
     def _read_nvml(self):
         n = self._nvml
         result = []
@@ -146,9 +167,12 @@ class GpuReader:
             except Exception:
                 pass
             try:
-                gpu["usage"] = float(n.nvmlDeviceGetUtilizationRates(h).gpu)
+                util = n.nvmlDeviceGetUtilizationRates(h)
+                gpu["usage"] = float(util.gpu)
+                gpu["vram_ctrl_pct"] = float(util.memory)  # Anteil der Zeit, in der VRAM gelesen/geschrieben wurde
             except Exception:
                 pass
+            self._nvml_bandwidth(h, gpu)
             try:
                 mem = n.nvmlDeviceGetMemoryInfo(h)
                 gpu["mem_used_mb"] = round(mem.used / 1048576)
@@ -330,6 +354,7 @@ class Sampler(threading.Thread):
         self.lhm = LhmHelper()
         self.cpu_sensors = CpuSensors(self.lhm)
         self.net = NetSensors()
+        self.ram_bw = RamBandwidth()
         self.hostname = socket.gethostname()
         self.data = {}
         psutil.cpu_percent(percpu=True)  # erste Messung initialisieren
@@ -364,6 +389,7 @@ class Sampler(threading.Thread):
                 "used_mb": round(vm.used / 1048576),
                 "total_mb": round(vm.total / 1048576),
                 "usage": round(vm.percent, 1),
+                **self.ram_bw.read(),
             },
             "gpus": merge_gpus(self.gpu.read(), self.lhm.gpus()),
             "net": self.net.read(),

@@ -102,6 +102,7 @@ jobs:
             Write-Host "CPU $($r.cpu.usage) %  RAM $($r.ram.usage) %  GPU-Quelle $($r.gpu_source)"
             Write-Host "Kerntakte: $($r.cpu.core_freq_mhz -join ', ') MHz  CPU-Temp: $($r.cpu.temp_c)  CPU-Leistung: $($r.cpu.power_w) W"
             Write-Host "Temp-Hinweis: $($r.cpu.temp_note)  GPUs: $($r.gpus | ConvertTo-Json -Compress)"
+            Write-Host "RAM: $($r.ram | ConvertTo-Json -Compress)"
             Start-Sleep -Seconds 3
             $r2 = Invoke-RestMethod http://127.0.0.1:47811/stats -TimeoutSec 3
             Write-Host "Netzwerk: $($r2.net | ConvertTo-Json -Compress -Depth 5)"

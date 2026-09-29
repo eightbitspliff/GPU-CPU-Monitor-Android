@@ -63,6 +63,14 @@ Der Nest Hub lädt die Seite direkt vom PC; das Handy muss dafür nicht an sein.
 | AMD / Intel unter Windows | Windows-Leistungsindikatoren + LibreHardwareMonitorLib | Auslastung, VRAM, Temperatur, Leistung, Takt |
 | AMD unter Linux | sysfs | Auslastung, VRAM, Temperatur, Takt |
 
+## RAM- und VRAM-Bandbreite
+
+- **VRAM (NVIDIA):** aktuelle Bandbreite ≈ Auslastung des Speicher-Controllers × Speichertakt × Busbreite,
+  dazu das Maximum der Karte. AMD/Intel: Auslastung des Speicher-Controllers in %.
+- **RAM:** Windows misst die aktuelle RAM-Bandbreite nicht. Angezeigt wird immer die maximale
+  Bandbreite (RAM-Takt × Kanäle). Läuft **HWiNFO** mit aktiviertem *Shared Memory Support*
+  (Einstellungen → Allgemein), übernimmt der Server dessen Live-Werte (DRAM Read/Write).
+
 ## CPU-Temperatur unter Windows
 
 Windows gibt CPU-Temperatur und CPU-Leistungsaufnahme nur über einen Treiber heraus. Die `PCMonitorServer.exe`

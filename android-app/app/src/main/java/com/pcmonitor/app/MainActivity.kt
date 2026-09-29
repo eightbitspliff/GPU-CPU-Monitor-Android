@@ -164,6 +164,7 @@ class MainActivity : Activity() {
                 s.cpuFreqMhz?.let { String.format(Locale.GERMANY, "%.2f GHz", it / 1000.0) },
                 s.cpuTempC?.let { "${Math.round(it)} °C" } ?: "– °C",
                 s.cpuPowerW?.let { "${Math.round(it)} W" },
+                fmtBw(s.ramBwGbs, s.ramBwMaxGbs)?.let { "RAM $it" },
             ).joinToString("  ·  ")
 
             val note = if (s.cpuTempC == null) s.cpuTempNote else null
@@ -184,6 +185,8 @@ class MainActivity : Activity() {
                 g.powerW?.let { "${Math.round(it)} W" },
                 g.clockMhz?.let { "${Math.round(it)} MHz" },
                 g.tempC?.let { "${Math.round(it)} °C" },
+                fmtBw(g.vramBwGbs, g.vramBwMaxGbs)?.let { "VRAM $it" }
+                    ?: g.vramCtrlPct?.let { "VRAM-Controller ${Math.round(it)} %" },
             ).joinToString("  ·  ")
 
             ramText.text = "RAM  ${fmtGb(s.ramUsedMb)} / ${fmtGb(s.ramTotalMb)}  (${fmtPct(s.ramUsage)})"
