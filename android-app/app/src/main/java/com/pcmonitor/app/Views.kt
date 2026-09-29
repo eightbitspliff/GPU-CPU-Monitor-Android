@@ -105,7 +105,7 @@ class GraphView @JvmOverloads constructor(
         color = context.getColor(R.color.track); strokeWidth = dp(1f)
     }
     private val gridText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = context.getColor(R.color.muted); textSize = dp(9f)
+        color = context.getColor(R.color.muted); textSize = dp(10f)
     }
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE; strokeWidth = dp(2f); strokeJoin = Paint.Join.ROUND
@@ -139,23 +139,32 @@ class GraphView @JvmOverloads constructor(
     }
 
     override fun onDraw(canvas: Canvas) {
-        val w = width.toFloat()
-        val h = height.toFloat()
-        if (w <= 0 || h <= 0) return
+        if (width <= 0 || height <= 0) return
+        // Beschriftung in eigenen Rändern (links Prozent, unten Zeit), damit sie die Kurven nicht verdeckt
+        val left = gridText.measureText("100") + dp(5f)
+        val top = gridText.textSize / 2f
+        val bottom = gridText.textSize + dp(5f)
+        val w = width - left
+        val h = height - top - bottom
+        if (w <= 10f || h <= 10f) return
+        canvas.save()
+        canvas.translate(left, top)
+
+        gridText.textAlign = Paint.Align.RIGHT
         for (p in listOf(0, 25, 50, 75, 100)) {
             val y = h - h * p / 100f
             canvas.drawLine(0f, y, w, y, gridPaint)
-            if (p in 25..75) canvas.drawText("$p", dp(2f), y - dp(2f), gridText)
+            if (p > 0) canvas.drawText("$p", -dp(4f), y + gridText.textSize * 0.35f, gridText)
         }
-        // Zeitmarken: 60 min -> alle 15 min, 15 min -> alle 5 min
-        val parts = if (minutes % 4 == 0) 4 else 3
-        for (k in 1 until parts) {
-            val x = w * k / parts
-            canvas.drawLine(x, 0f, x, h, gridPaint)
-            val mins = minutes * (parts - k) / parts.toFloat()
-            val label = if (mins == Math.round(mins).toFloat()) "-${Math.round(mins)} min"
-            else String.format(java.util.Locale.GERMANY, "-%.1f min", mins)
-            canvas.drawText(label, x + dp(2f), h - dp(3f), gridText)
+        // Zeitachse: 15 min -> alle 5 min, 5 min -> jede Minute; linker Rand ohne Marke (Spanne steht im Titel)
+        val tick = if (minutes >= 15) 5 else 1
+        var m = 0
+        while (m < minutes) {
+            val x = w - w * m / minutes
+            if (m > 0) canvas.drawLine(x, 0f, x, h, gridPaint)
+            gridText.textAlign = if (m == 0) Paint.Align.RIGHT else Paint.Align.CENTER
+            canvas.drawText(if (m == 0) "jetzt" else "-$m min", x, h + dp(3f) + gridText.textSize, gridText)
+            m += tick
         }
 
         // Werte in Eimer mitteln, damit höchstens ein Punkt pro ~1,5 px gezeichnet wird
@@ -192,6 +201,7 @@ class GraphView @JvmOverloads constructor(
             fillPaint.color = (color and 0x00FFFFFF) or 0x22000000
             canvas.drawPath(path, fillPaint)
         }
+        canvas.restore()
     }
 }
 

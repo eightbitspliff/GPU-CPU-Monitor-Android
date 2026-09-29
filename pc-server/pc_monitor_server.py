@@ -14,6 +14,7 @@ Start:  python pc_monitor_server.py   (oder die fertige PCMonitorServer.exe)
         Optionen: --tray (versteckt im Systemtray starten), --console (ohne Fenster)
 """
 
+import base64
 import json
 import os
 import platform
@@ -40,7 +41,7 @@ HTTP_PORT = int(os.environ.get("PCMON_PORT", "47811"))
 DISCOVERY_PORT = 47810
 DISCOVERY_REQUEST = b"PCMON_DISCOVER"
 SAMPLE_INTERVAL = 1.0
-HISTORY_SECONDS = 3600  # Verlauf für die Diagramme (60 Minuten)
+HISTORY_SECONDS = 900  # Verlauf für die Diagramme (15 Minuten)
 IS_WINDOWS = os.name == "nt"
 NO_WINDOW = 0x08000000 if IS_WINDOWS else 0  # CREATE_NO_WINDOW
 
@@ -57,9 +58,11 @@ function Test-Parent { return [bool](Get-Process -Id $parentPid -ErrorAction Sil
 
 def start_powershell(script):
     """Startet ein PowerShell-Skript unsichtbar im Hintergrund und merkt es sich."""
+    # -EncodedCommand statt -Command: keine Probleme mit Anführungszeichen beim Übergeben
+    code = base64.b64encode(((_PS_PARENT_CHECK % os.getpid()) + script).encode("utf-16-le")).decode()
     proc = subprocess.Popen(
         ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-         "-Command", (_PS_PARENT_CHECK % os.getpid()) + script],
+         "-EncodedCommand", code],
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
         creationflags=NO_WINDOW)
     _children.append(proc)
@@ -128,31 +131,66 @@ class CpuSensors:
     """Leistungsaufnahme (W) und Temperatur (°C) der CPU.
 
     Windows: LibreHardwareMonitor / OpenHardwareMonitor (falls gestartet, liefert
-    Leistung + Temperatur), sonst Windows-Leistungsindikator "Energy Meter" (RAPL,
-    nur Leistung, ohne Adminrechte).
+    Leistung + Temperatur; per WMI oder über den LHM-Webserver auf Port 8085),
+    sonst Windows-Leistungsindikator "Energy Meter" (RAPL, nur Leistung).
+    Windows selbst stellt die CPU-Temperatur ohne solchen Treiber nicht bereit.
     Linux: RAPL über /sys/class/powercap und psutil für die Temperatur.
     """
 
     _PS_SCRIPT = r"""
 $ErrorActionPreference = 'SilentlyContinue'
+$inv = [Globalization.CultureInfo]::InvariantCulture
+function Walk($n) { $n; foreach ($c in $n.Children) { Walk $c } }
+function Num($v) {
+  if ($v -eq $null) { return $null }
+  $m = [regex]::Match([string]$v, '-?[0-9]+([.,][0-9]+)?')
+  if (-not $m.Success) { return $null }
+  return [double]::Parse($m.Value.Replace(',', '.'), $inv)
+}
+function Pick($list, $type, $namePattern) {
+  $x = $list | Where-Object { $_.T -eq $type -and $_.N -match $namePattern } | Select-Object -First 1
+  if (-not $x) { $x = $list | Where-Object { $_.T -eq $type } | Sort-Object V -Descending | Select-Object -First 1 }
+  return $x
+}
 while (Test-Parent) {
-  $p = $null; $t = $null
+  $p = $null; $t = $null; $src = ''
+  $list = $null
+  # 1) LibreHardwareMonitor / OpenHardwareMonitor über WMI
   foreach ($ns in 'root/LibreHardwareMonitor', 'root/OpenHardwareMonitor') {
     $s = Get-CimInstance -Namespace $ns -ClassName Sensor
-    if (-not $s) { continue }
-    $cpu = $s | Where-Object { $_.Identifier -match 'cpu' }
-    $pw = $cpu | Where-Object { $_.SensorType -eq 'Power' -and $_.Name -match 'Package' } | Select-Object -First 1
-    if ($pw) { $p = $pw.Value }
-    $tp = $cpu | Where-Object { $_.SensorType -eq 'Temperature' -and $_.Name -match 'Package|Tctl|Tdie' } | Select-Object -First 1
-    if (-not $tp) { $tp = $cpu | Where-Object { $_.SensorType -eq 'Temperature' } | Sort-Object Value -Descending | Select-Object -First 1 }
-    if ($tp) { $t = $tp.Value }
-    break
+    if ($s) {
+      $list = $s | Where-Object { $_.Identifier -match 'cpu' } |
+        ForEach-Object { [pscustomobject]@{ T = [string]$_.SensorType; N = [string]$_.Name; V = [double]$_.Value } }
+      $src = if ($ns -match 'Libre') { 'LibreHardwareMonitor' } else { 'OpenHardwareMonitor' }
+      break
+    }
   }
+  # 2) LibreHardwareMonitor-Webserver (Options -> Remote Web Server)
+  if (-not $list) {
+    $j = Invoke-RestMethod -Uri 'http://127.0.0.1:8085/data.json' -TimeoutSec 1
+    if ($j) {
+      $list = Walk $j | Where-Object { $_.SensorId -match 'cpu' -and $_.Type } |
+        ForEach-Object { [pscustomobject]@{ T = [string]$_.Type; N = [string]$_.Text; V = (Num $_.Value) } }
+      $src = 'LibreHardwareMonitor (Webserver)'
+    }
+  }
+  if ($list) {
+    $pw = Pick $list 'Power' 'Package'
+    if ($pw) { $p = $pw.V }
+    $tp = Pick $list 'Temperature' 'Package|Tctl|Tdie'
+    if ($tp) { $t = $tp.V }
+  }
+  # 3) Windows-Leistungsindikator "Energy Meter" (RAPL), nur Leistung
   if ($p -eq $null) {
     $e = Get-CimInstance Win32_PerfFormattedData_Counters_EnergyMeter | Where-Object { $_.Name -match 'PKG' } | Select-Object -First 1
-    if ($e -and $e.Power -gt 0) { $p = $e.Power / 1000 }
+    if ($e -and $e.Power -gt 0) {
+      $p = $e.Power / 1000
+      if (-not $src) { $src = 'Windows Energy Meter' }
+    }
   }
-  [Console]::Out.WriteLine("VAL:" + $p + ";" + $t)
+  $ps = if ($p -ne $null) { ([double]$p).ToString($inv) } else { '' }
+  $ts = if ($t -ne $null) { ([double]$t).ToString($inv) } else { '' }
+  [Console]::Out.WriteLine('VAL:' + $ps + ';' + $ts + ';' + $src)
   [Console]::Out.Flush()
   Start-Sleep -Milliseconds 1000
 }
@@ -161,6 +199,8 @@ while (Test-Parent) {
     def __init__(self):
         self.power_w = None
         self.temp_c = None
+        self.source = None  # woher die Werte kommen (für die Anzeige im Server-Fenster)
+        self.running = False  # Messskript meldet sich (Windows)
         self._rapl_path = None
         self._rapl_last = None
         if IS_WINDOWS:
@@ -177,9 +217,12 @@ while (Test-Parent) {
             line = line.strip()
             if not line.startswith("VAL:"):
                 continue
-            power, _, temp = line[4:].partition(";")
-            self.power_w = self._num(power)
-            self.temp_c = self._num(temp)
+            self.running = True
+            parts = line[4:].split(";")
+            parts += [""] * (3 - len(parts))
+            self.power_w = self._num(parts[0])
+            self.temp_c = self._num(parts[1])
+            self.source = parts[2].strip() or None
 
     @staticmethod
     def _num(v):
@@ -198,6 +241,7 @@ while (Test-Parent) {
                     with open(os.path.join(path, "energy_uj")) as f:
                         f.read()
                     self._rapl_path = path
+                    self.source = "RAPL (powercap)"
                     return
         except OSError:
             pass  # nicht vorhanden oder nur mit root lesbar
@@ -466,6 +510,8 @@ class Sampler(threading.Thread):
             },
             "gpus": self.gpu.read(),
             "gpu_source": self.gpu.source,
+            "cpu_sensor_source": self.cpu_sensors.source,
+            "cpu_sensor_running": self.cpu_sensors.running or not IS_WINDOWS,
         }
         gpus = data["gpus"]
         gpu_usage = gpus[0].get("usage") if gpus else None

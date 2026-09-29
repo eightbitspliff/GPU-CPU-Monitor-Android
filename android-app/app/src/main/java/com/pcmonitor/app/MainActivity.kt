@@ -80,8 +80,8 @@ class MainActivity : Activity() {
         gpuGauge.label = "GPU"; gpuGauge.color = gpuColor
         ramBar.color = getColor(R.color.ram)
         vramBar.color = gpuColor
-        graphLong.minutes = 60
-        graphShort.minutes = 15
+        graphLong.minutes = 15
+        graphShort.minutes = 5
         for (g in listOf(graphLong, graphShort)) {
             cpuSeries = g.addSeries(cpuColor)
             gpuSeries = g.addSeries(gpuColor)
@@ -207,7 +207,7 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Holt den Verlauf der letzten 60 Minuten vom Server, damit die Diagramme sofort gefüllt sind. */
+    /** Holt den Verlauf der letzten 15 Minuten vom Server, damit die Diagramme sofort gefüllt sind. */
     private fun loadHistory(addr: String) {
         historyFor = addr
         Thread {

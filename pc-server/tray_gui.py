@@ -6,6 +6,7 @@ Doppelklick aufs Tray-Icon oder "Anzeigen" holt das Fenster zurück.
 
 import threading
 import tkinter as tk
+import webbrowser
 from tkinter import messagebox, ttk
 
 import pystray
@@ -13,6 +14,8 @@ import pystray
 import autostart
 import caster as caster_mod
 from app_icon import make_icon
+
+LHM_URL = "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/latest"
 
 BG = "#0E1116"
 CARD = "#171B22"
@@ -64,6 +67,14 @@ def run(sampler, caster, ips, port, start_hidden=False):
              font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=12, pady=(10, 0))
     tk.Label(card, text=sampler.cpu_name, bg=CARD, fg=MUTED,
              font=("Segoe UI", 8)).pack(anchor="w", padx=12)
+    sensor_var = tk.StringVar(value="CPU Power/Temp: suche Quelle…")
+    sensor_label = tk.Label(card, textvariable=sensor_var, bg=CARD, fg=MUTED, font=("Segoe UI", 8),
+                            wraplength=300, justify="left")
+    sensor_label.pack(anchor="w", padx=12)
+    lhm_link = tk.Label(card, text="→ LibreHardwareMonitor herunterladen", bg=CARD, fg=CPU,
+                        font=("Segoe UI", 8, "underline"), cursor="hand2")
+    lhm_link.bind("<Button-1>", lambda e: webbrowser.open(LHM_URL))
+    lhm_shown = [False]
     tk.Label(card, textvariable=gpu_var, bg=CARD, fg=GPU,
              font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=12, pady=(8, 0))
     tk.Label(card, text="GPU-Quelle: " + (sampler.gpu.source or "keine GPU-Daten gefunden"),
@@ -185,6 +196,19 @@ def run(sampler, caster, ips, port, start_hidden=False):
             gpus = d.get("gpus") or []
             gpu = gpus[0]["usage"] if gpus else None
             cpu_var.set(f"CPU  {_pct(cpu)}")
+            src = d.get("cpu_sensor_source")
+            if src:
+                sensor_var.set(f"CPU Power/Temp: {src}")
+            elif d.get("cpu_sensor_running"):
+                sensor_var.set("CPU Power/Temp: keine Quelle gefunden – Windows liefert diese Werte "
+                               "nicht selbst. LibreHardwareMonitor starten, dann erscheinen sie automatisch.")
+            need_link = not src and d.get("cpu_sensor_running")
+            if need_link != lhm_shown[0]:
+                if need_link:
+                    lhm_link.pack(anchor="w", padx=12, after=sensor_label)
+                else:
+                    lhm_link.pack_forget()
+                lhm_shown[0] = need_link
             gpu_var.set(f"GPU  {_pct(gpu)}")
             try:
                 tray.title = f"PC Monitor – CPU {_pct(cpu)} · GPU {_pct(gpu)}"

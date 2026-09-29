@@ -66,8 +66,8 @@ DASHBOARD_HTML = r"""<!doctype html>
         <path class="arc" d="M21.7 78.3 A40 40 0 1 1 78.3 78.3" pathLength="100" stroke="var(--cpu)" stroke-dasharray="0 100"/>
         <text class="val" x="50" y="56">–</text><text class="lbl" x="50" y="84">CPU</text></svg>
       <div class="name">–</div>
-      <div class="kv"><span>Leistungsaufnahme</span><b class="pow">–</b></div>
-      <div class="kv"><span>Temperatur</span><b class="temp">–</b></div>
+      <div class="kv"><span>Power</span><b class="pow">–</b></div>
+      <div class="kv"><span>Temp</span><b class="temp">–</b></div>
       <div class="mem"><div class="top"><span>RAM</span><b id="ramP">–</b></div>
         <div class="bar"><div id="ramB" style="background:var(--ram)"></div></div><div class="det" id="ramT">–</div></div>
     </div>
@@ -76,20 +76,20 @@ DASHBOARD_HTML = r"""<!doctype html>
         <path class="arc" d="M21.7 78.3 A40 40 0 1 1 78.3 78.3" pathLength="100" stroke="var(--gpu)" stroke-dasharray="0 100"/>
         <text class="val" x="50" y="56">–</text><text class="lbl" x="50" y="84">GPU</text></svg>
       <div class="name">–</div>
-      <div class="kv"><span>Leistungsaufnahme</span><b class="pow">–</b></div>
-      <div class="kv"><span>Temperatur</span><b class="temp">–</b></div>
+      <div class="kv"><span>Power</span><b class="pow">–</b></div>
+      <div class="kv"><span>Temp</span><b class="temp">–</b></div>
       <div class="mem"><div class="top"><span>VRAM</span><b id="vramP">–</b></div>
         <div class="bar"><div id="vramB" style="background:var(--gpu)"></div></div><div class="det" id="vramT">–</div></div>
     </div>
-    <div class="card graph"><div class="t">Verlauf (60 Minuten)</div><canvas id="graphLong" data-min="60"></canvas></div>
-    <div class="card graph"><div class="t">Verlauf (15 Minuten)</div><canvas id="graphShort" data-min="15"></canvas></div>
+    <div class="card graph"><div class="t">Verlauf (15 Minuten)</div><canvas id="graphLong" data-min="15"></canvas></div>
+    <div class="card graph"><div class="t">Verlauf (5 Minuten)</div><canvas id="graphShort" data-min="5"></canvas></div>
   </div>
 </div>
 <script>
 (function () {
   if (/[?&]cast=1/.test(location.search)) document.body.className = "cast";
-  // Ein Wert pro Sekunde, 60 Minuten lang; das 15-Minuten-Diagramm zeigt den letzten Teil davon.
-  var CAP = 3600, hist = { cpu: [], gpu: [] }, fails = 0;
+  // Ein Wert pro Sekunde, 15 Minuten lang; das 5-Minuten-Diagramm zeigt den letzten Teil davon.
+  var CAP = 900, hist = { cpu: [], gpu: [] }, fails = 0;
   function $(id) { return document.getElementById(id); }
   function pct(v) { return v == null ? "–" : Math.round(v) + " %"; }
   function num(mb) { return mb == null ? "–" : (mb / 1024).toFixed(1).replace(".", ","); }
@@ -109,28 +109,37 @@ DASHBOARD_HTML = r"""<!doctype html>
 
   function drawGraph(c) {
     var dpr = window.devicePixelRatio || 1;
-    var w = c.clientWidth, h = c.clientHeight;
-    if (!w || !h) return;
-    if (c.width !== w * dpr || c.height !== h * dpr) { c.width = w * dpr; c.height = h * dpr; }
+    var W = c.clientWidth, H = c.clientHeight;
+    if (!W || !H) return;
+    if (c.width !== W * dpr || c.height !== H * dpr) { c.width = W * dpr; c.height = H * dpr; }
     var g = c.getContext("2d");
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.clearRect(0, 0, w, h);
+    g.clearRect(0, 0, W, H);
     var mins = +c.getAttribute("data-min"), cap = mins * 60;
-    g.strokeStyle = "#262C36"; g.lineWidth = 1; g.fillStyle = "#8A94A6";
     // gut lesbar auf dem 7"-Display des Nest Hub (1024x600)
     var fs = Math.max(12, Math.min(18, Math.round(window.innerHeight * 0.028)));
     g.font = "600 " + fs + "px sans-serif";
+    // Beschriftung liegt in eigenen Rändern (links Prozent, unten Zeit) und verdeckt die Kurven nicht
+    var left = Math.ceil(g.measureText("100").width) + 8, bottom = fs + 8, top = Math.ceil(fs / 2);
+    var w = W - left, h = H - bottom - top;
+    if (w <= 10 || h <= 10) return;
+    g.save();
+    g.translate(left, top);
+    g.strokeStyle = "#262C36"; g.lineWidth = 1; g.fillStyle = "#8A94A6";
+    g.textBaseline = "middle"; g.textAlign = "right";
     [0, 25, 50, 75, 100].forEach(function (p) {
-      var y = h - h * p / 100;
+      var y = Math.round(h - h * p / 100) + 0.5;
       g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
-      if (p > 0 && p < 100) g.fillText(p, 3, y - 4);
+      if (p > 0) g.fillText(p, -6, y);
     });
-    // Zeitmarken: 60 min -> alle 15 min, 15 min -> alle 5 min
-    var parts = mins % 4 === 0 ? 4 : 3;
-    for (var k = 1; k < parts; k++) {
-      var x = w * k / parts, m = mins * (parts - k) / parts;
-      g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke();
-      g.fillText("-" + m + " min", x + 4, h - 5);
+    // Zeitachse: 15 min -> alle 5 min, 5 min -> jede Minute
+    var tick = mins >= 15 ? 5 : 1;
+    g.textBaseline = "top"; g.textAlign = "center";
+    for (var m = 0; m < mins; m += tick) {  // linker Rand ohne Marke, die Spanne steht im Titel
+      var x = Math.round(w - w * m / mins) + 0.5;
+      if (m > 0) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
+      g.textAlign = m === 0 ? "right" : "center";
+      g.fillText(m === 0 ? "jetzt" : "-" + m + " min", x, h + 5);
     }
     // Werte in Eimer mitteln: höchstens ein Punkt pro ~1,5 px
     var per = Math.max(1, Math.ceil(cap / (w / 1.5))), buckets = Math.ceil(cap / per);
@@ -154,6 +163,7 @@ DASHBOARD_HTML = r"""<!doctype html>
       g.lineTo(last, h); g.lineTo(first, h); g.closePath();
       g.fillStyle = s[1] + "22"; g.fill();
     });
+    g.restore();
   }
   function draw() { drawGraph($("graphLong")); drawGraph($("graphShort")); }
 

@@ -123,7 +123,7 @@
                         android:layout_weight="1"
                         android:ellipsize="end"
                         android:maxLines="1"
-                        android:text="Leistungsaufnahme"
+                        android:text="Power"
                         android:textColor="@color/muted"
                         android:textSize="13sp" />
 
@@ -152,7 +152,7 @@
                         android:layout_weight="1"
                         android:ellipsize="end"
                         android:maxLines="1"
-                        android:text="Temperatur"
+                        android:text="Temp"
                         android:textColor="@color/muted"
                         android:textSize="13sp" />
 
@@ -255,7 +255,7 @@
                         android:layout_weight="1"
                         android:ellipsize="end"
                         android:maxLines="1"
-                        android:text="Leistungsaufnahme"
+                        android:text="Power"
                         android:textColor="@color/muted"
                         android:textSize="13sp" />
 
@@ -284,7 +284,7 @@
                         android:layout_weight="1"
                         android:ellipsize="end"
                         android:maxLines="1"
-                        android:text="Temperatur"
+                        android:text="Temp"
                         android:textColor="@color/muted"
                         android:textSize="13sp" />
 
@@ -355,7 +355,7 @@
             android:layout_weight="1"
             android:orientation="vertical">
 
-            <!-- Verlauf: oben 60 Minuten, unten 15 Minuten -->
+            <!-- Verlauf: oben 15 Minuten, unten 5 Minuten -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
@@ -368,7 +368,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Verlauf (60 Minuten)"
+                    android:text="Verlauf (15 Minuten)"
                     android:textColor="@color/muted"
                     android:textSize="12sp" />
 
@@ -392,7 +392,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Verlauf (15 Minuten)"
+                    android:text="Verlauf (5 Minuten)"
                     android:textColor="@color/muted"
                     android:textSize="12sp" />
 

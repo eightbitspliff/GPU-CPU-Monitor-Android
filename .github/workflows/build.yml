@@ -67,6 +67,15 @@ jobs:
           try {
             if (-not $r) { throw "Server hat nicht geantwortet" }
             Write-Host "CPU $($r.cpu.usage) %  RAM $($r.ram.usage) %  GPU-Quelle $($r.gpu_source)"
+            # CPU-Sensor-Skript (PowerShell) muss laufen und Werte melden
+            for ($i = 0; $i -lt 15 -and -not $r.cpu_sensor_running; $i++) {
+              Start-Sleep -Seconds 2
+              $r = Invoke-RestMethod http://127.0.0.1:47811/stats -TimeoutSec 3
+            }
+            Write-Host "CPU-Sensoren: läuft=$($r.cpu_sensor_running) Quelle=$($r.cpu_sensor_source) Power=$($r.cpu.power_w) Temp=$($r.cpu.temp_c)"
+            if (-not $r.cpu_sensor_running) { throw "CPU-Sensor-Skript meldet sich nicht" }
+            $h = Invoke-RestMethod http://127.0.0.1:47811/history -TimeoutSec 5
+            if ($h.cpu.Count -lt 1) { throw "Verlauf fehlt" }
             $html = Invoke-WebRequest http://127.0.0.1:47811/ -UseBasicParsing -TimeoutSec 5
             if ($html.Content -notmatch "PC Monitor") { throw "Dashboard fehlt" }
             $c = Invoke-RestMethod "http://127.0.0.1:47811/cast?scan=1" -TimeoutSec 30

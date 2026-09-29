@@ -34,8 +34,8 @@ korrigiert sie den Eintrag beim nächsten Start. Abschalten: Rechtsklick aufs Tr
 
 - Uhrzeit oben links
 - Große Anzeigen für **CPU** und **GPU** (Auslastung in %), darunter untereinander:
-  **Leistungsaufnahme**, **Temperatur** und **RAM** (CPU) bzw. **VRAM** (GPU)
-- Zwei Verlaufsdiagramme: oben die **letzten 60 Minuten**, unten die **letzten 15 Minuten**.
+  **Power** (Leistungsaufnahme), **Temp** (Temperatur) und **RAM** (CPU) bzw. **VRAM** (GPU)
+- Zwei Verlaufsdiagramme: oben die **letzten 15 Minuten**, unten die **letzten 5 Minuten**.
   Der Server schreibt den Verlauf mit – die Diagramme sind also sofort gefüllt, auch wenn
   die App vorher geschlossen war
 - Bildschirm bleibt an (z.B. als Zweitdisplay neben dem PC), abschaltbar im Menü ⋮
@@ -68,9 +68,15 @@ Der Nest Hub lädt die Seite direkt vom PC; das Handy muss dafür nicht an sein.
 | Windows-Leistungsindikator „Energy Meter“ (RAPL) | Leistung | ohne Zusatzprogramm, nicht auf jedem PC vorhanden |
 | Linux: `/sys/class/powercap`, Sensoren | Leistung, Temperatur | Leistung ggf. nur mit root |
 
-Windows selbst stellt die CPU-Temperatur ohne Zusatzprogramm nicht bereit. Wird ein Wert
-nicht angezeigt („–“): LibreHardwareMonitor starten (Options → „Run On Windows Startup“),
-der Server liest die Werte dann automatisch mit.
+Windows selbst stellt CPU-Temperatur und (bei den meisten CPUs) CPU-Leistung nicht bereit –
+dafür braucht es einen Hardware-Treiber, wie ihn LibreHardwareMonitor mitbringt. Zeigt die
+CPU „–“ an:
+
+1. [LibreHardwareMonitor herunterladen](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/latest), entpacken, `LibreHardwareMonitor.exe` starten (Adminrechte bestätigen)
+2. In LibreHardwareMonitor unter **Options** „Start Minimized“, „Minimize To Tray“ und
+   „Run On Windows Startup“ anhaken
+3. Fertig – der Server liest die Werte automatisch mit (WMI oder, falls unter Options →
+   „Remote Web Server“ aktiviert, über Port 8085). Im Server-Fenster steht, welche Quelle genutzt wird.
 
 ## GPU-Unterstützung
 
@@ -91,7 +97,7 @@ python pc_monitor_server.py
 ## Technik
 
 - HTTP `GET http://<pc-ip>:47811/stats` liefert JSON
-- HTTP `GET http://<pc-ip>:47811/history` liefert den CPU/GPU-Verlauf der letzten 60 Minuten
+- HTTP `GET http://<pc-ip>:47811/history` liefert den CPU/GPU-Verlauf der letzten 15 Minuten
 - UDP-Port `47810` für die automatische Suche
 - App selbst bauen: `cd android-app && ./gradlew assembleRelease` (Android SDK nötig);
   GitHub Actions baut APK und EXE bei jedem Push automatisch.
