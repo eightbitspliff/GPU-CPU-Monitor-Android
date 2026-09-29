@@ -74,6 +74,25 @@ jobs:
           if (-not $asset) { $rels[0].assets | ForEach-Object { Write-Host $_.name }; throw "PresentMon-Konsolenprogramm nicht gefunden" }
           Invoke-WebRequest $asset.browser_download_url -OutFile PresentMon.exe
           (Get-Item PresentMon.exe).Length
+      - name: PresentMon prüfen (Ausgabe mit unseren Optionen)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $args = "--output_stdout", "--no_console_stats", "--stop_existing_session", "--session_name", "PCMonitorFPS", "--v1_metrics", "--no_track_display", "--no_track_input", "--no_track_gpu"
+          $psi = New-Object System.Diagnostics.ProcessStartInfo (Resolve-Path PresentMon.exe).Path, ($args -join " ")
+          $psi.UseShellExecute = $false; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
+          $pm = [System.Diagnostics.Process]::Start($psi)
+          Start-Sleep -Seconds 6
+          $alive = -not $pm.HasExited
+          if ($alive) { $pm.Kill() }
+          Write-Host "Läuft nach 6 s noch: $alive  Exitcode: $(if ($alive) { '-' } else { $pm.ExitCode })"
+          Write-Host "--- stdout ---"; ($pm.StandardOutput.ReadToEnd() -split "`n" | Select-Object -First 12) | ForEach-Object { Write-Host $_ }
+          Write-Host "--- stderr ---"; ($pm.StandardError.ReadToEnd() -split "`n" | Select-Object -First 12) | ForEach-Object { Write-Host $_ }
+          Write-Host "--- Hilfe ---"
+          $h = New-Object System.Diagnostics.ProcessStartInfo (Resolve-Path PresentMon.exe).Path, "--help"
+          $h.UseShellExecute = $false; $h.RedirectStandardOutput = $true; $h.RedirectStandardError = $true
+          $hp = [System.Diagnostics.Process]::Start($h); $hp.WaitForExit(10000) | Out-Null
+          ($hp.StandardOutput.ReadToEnd() + $hp.StandardError.ReadToEnd()) -split "`n" | Select-Object -First 90 | ForEach-Object { Write-Host $_ }
       - name: Sensor-Modul testen
         shell: pwsh
         run: |

@@ -259,7 +259,7 @@ def run(sampler, caster, ips, port, start_hidden=False):
             gpu_power_var.set("GPU-Leistungssensoren: " + ", ".join(
                 f"{k} {round(v)} W" for k, v in sorted(src.items(), key=lambda kv: -kv[1])) if src else "")
             f = d.get("fps")
-            fps_var.set(f"FPS: {f['fps']}  ({f['app']})" if f else "FPS: – (kein Spiel erkannt)")
+            fps_var.set(f"FPS: {f['fps']}  ({f['app']})" if f else f"FPS: – ({sampler.fps.status()})")
             note = d["cpu"].get("temp_note")
             temp_var.set("CPU-Temperatur: " + (f"{round(temp)} °C" if temp is not None else (note or "–")))
             want = lhm.needs_pawnio() and lhm.admin

@@ -53,6 +53,7 @@ class FpsMonitor:
         self._frames = {}
         self._names = {}
         self.error = None
+        self.last_message = ""
 
     @property
     def available(self):
@@ -67,7 +68,7 @@ class FpsMonitor:
                 [self.path, "--output_stdout", "--no_console_stats", "--stop_existing_session",
                  "--session_name", SESSION, "--v1_metrics",
                  "--no_track_display", "--no_track_input", "--no_track_gpu"],
-                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, encoding="utf-8", errors="replace", creationflags=NO_WINDOW)
         except Exception as e:
             self.error = str(e)
@@ -87,21 +88,27 @@ class FpsMonitor:
 
     # ------------------------------------------------------------ Einlesen
     def _read(self, proc):
-        reader = csv.reader(proc.stdout)
-        try:
-            header = next(reader)
-        except StopIteration:
-            self.error = "PresentMon liefert keine Daten"
-            return
-        cols = {name.strip(): i for i, name in enumerate(header)}
-        i_app = cols.get("Application")
-        i_pid = cols.get("ProcessID")
-        i_ms = next((cols[c] for c in ("MsBetweenPresents", "FrameTime", "MsBetweenAppStart") if c in cols), None)
-        if i_pid is None or i_ms is None:
-            self.error = "Unbekanntes PresentMon-Format"
-            return
-        self.error = None
-        for row in reader:
+        # Kopfzeile suchen (PresentMon kann vorher Hinweise ausgeben), danach immer
+        # weiterlesen – sonst läuft die Pipe voll und PresentMon bleibt stehen.
+        cols = None
+        i_app = i_pid = i_ms = None
+        self.error = "warte auf PresentMon…"
+        for line in proc.stdout:
+            if cols is None:
+                if "ProcessID" in line and ("Application" in line or "ProcessName" in line):
+                    header = next(csv.reader([line]))
+                    cols = {name.strip(): i for i, name in enumerate(header)}
+                    i_app = cols.get("Application", cols.get("ProcessName"))
+                    i_pid = cols.get("ProcessID")
+                    i_ms = next((cols[c] for c in ("MsBetweenPresents", "FrameTime", "MsBetweenAppStart",
+                                                    "MsBetweenDisplayChange") if c in cols), None)
+                    self.error = None if i_ms is not None else "unbekanntes Format: " + line.strip()[:120]
+                else:
+                    self.last_message = line.strip()[:200]
+                continue
+            if i_ms is None:
+                continue
+            row = line.rstrip("\r\n").split(",")
             try:
                 pid = int(row[i_pid])
                 ms = float(row[i_ms])
@@ -119,6 +126,19 @@ class FpsMonitor:
                 q.append((now, ms))
                 while q and now - q[0][0] > 3.0:
                     q.popleft()
+        code = proc.poll()
+        if self._proc is proc:
+            self.error = f"PresentMon beendet (Code {code})" + (f": {self.last_message}" if self.last_message else "")
+
+    def status(self):
+        """Kurzer Grund, warum keine FPS kommen (fürs Server-Fenster)."""
+        if not IS_WINDOWS:
+            return "nur unter Windows"
+        if not self.path:
+            return "PresentMon fehlt in diesem Build"
+        if self._proc is None:
+            return "Messung pausiert"
+        return self.error or "kein Programm zeichnet gerade Bilder"
 
     # ------------------------------------------------------------ Auswertung
     def read(self):
