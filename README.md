@@ -30,6 +30,7 @@ hinter das Ziel ` --tray` schreiben – dann startet er direkt unsichtbar im Tra
 ## App-Funktionen
 
 - Große Anzeigen für **CPU** und **GPU** (Auslastung in %), dazu Leistungsaufnahme und Temperatur
+- Aktuelle **FPS** des Spiels im Vordergrund (oben rechts), gemessen mit Intel PresentMon (MIT-Lizenz)
 - Verlaufsdiagramm der letzten 2 Minuten
 - RAM- und VRAM-Belegung
 - Bildschirm bleibt an (z.B. als Zweitdisplay neben dem PC), abschaltbar im Menü ⋮
@@ -80,6 +81,7 @@ Der Server ist auf möglichst wenig CPU-Last ausgelegt:
   alle 10 s (für den Tray-Tooltip).
 - Das Sensor-Modul misst nur auf Anfrage (alle 3 s), bei NVIDIA nur die CPU.
 - Das Server-Fenster zeigt die eigene CPU-Last (Server und Sensor-Modul) wie im Task-Manager.
+- Die FPS-Messung (PresentMon) läuft nur, solange App, Nest Hub oder Server-Fenster Werte anzeigen.
 - Server und Sensor-Modul laufen mit niedriger Priorität und im Effizienzmodus (EcoQoS).
 
 ## Server ohne EXE (mit Python)

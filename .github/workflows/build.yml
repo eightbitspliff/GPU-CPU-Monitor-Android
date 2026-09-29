@@ -59,6 +59,21 @@ jobs:
         run: |
           Invoke-WebRequest https://github.com/namazso/PawnIO.Setup/releases/latest/download/PawnIO_setup.exe -OutFile PawnIO_setup.exe
           (Get-Item PawnIO_setup.exe).Length
+      - name: PresentMon holen (FPS-Messung, Intel, MIT-Lizenz)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $h = @{ Authorization = "Bearer $env:GH_TOKEN"; "User-Agent" = "pcmon-ci" }
+          $rels = Invoke-RestMethod https://api.github.com/repos/GameTechDev/PresentMon/releases -Headers $h
+          $asset = $null
+          foreach ($r in $rels) {
+            $asset = $r.assets | Where-Object { $_.name -match '^PresentMon-[\d.]+-x64\.exe$' } | Select-Object -First 1
+            if ($asset) { Write-Host "PresentMon: $($r.tag_name) / $($asset.name)"; break }
+          }
+          if (-not $asset) { $rels[0].assets | ForEach-Object { Write-Host $_.name }; throw "PresentMon-Konsolenprogramm nicht gefunden" }
+          Invoke-WebRequest $asset.browser_download_url -OutFile PresentMon.exe
+          (Get-Item PresentMon.exe).Length
       - name: Sensor-Modul testen
         shell: pwsh
         run: |
@@ -83,7 +98,7 @@ jobs:
           if ($LASTEXITCODE) { exit 1 }
           pyinstaller --onefile --noconsole --uac-admin --name PCMonitorServer --icon icon.ico `
             --hidden-import pynvml --hidden-import pystray._win32 `
-            --add-data "sensor_helper/out;sensor_helper" --add-data "PawnIO_setup.exe;." `
+            --add-data "sensor_helper/out;sensor_helper" --add-data "PawnIO_setup.exe;." --add-data "PresentMon.exe;." `
             --collect-submodules pychromecast --collect-submodules zeroconf pc_monitor_server.py
       - name: EXE testen (startet im Tray, liefert Werte)
         shell: pwsh
@@ -108,6 +123,9 @@ jobs:
             Start-Sleep -Seconds 3
             $r2 = Invoke-RestMethod http://127.0.0.1:47811/stats -TimeoutSec 3
             Write-Host "Nach 3 s: CPU $($r2.cpu.usage) %  GPU $($r2.gpus[0].usage) %"
+            $pm = Get-Process PresentMon -ErrorAction SilentlyContinue
+            Write-Host "FPS: $($r2.fps | ConvertTo-Json -Compress)  PresentMon läuft: $([bool]$pm)"
+            if (-not $pm) { throw "PresentMon (FPS-Messung) läuft nicht" }
             Write-Host "Priorität: $((Get-Process -Id $p.Id).PriorityClass)  Sensor-Modul: $((Get-Process SensorHelper -ErrorAction SilentlyContinue | Select-Object -First 1).PriorityClass)"
             if ($r.cpu.temp_note -eq "Sensor-Modul fehlt im PC-Server") { throw $r.cpu.temp_note }
             if (-not $r.cpu.cores) { throw "Auslastung je CPU-Kern fehlt" }
@@ -121,8 +139,8 @@ jobs:
             Stop-Process -Name PCMonitorServer -Force -ErrorAction SilentlyContinue
           }
           Start-Sleep -Seconds 2
-          $left = Get-Process SensorHelper -ErrorAction SilentlyContinue
-          if ($left) { throw "Sensor-Modul läuft nach dem Beenden des Servers weiter" }
+          $left = Get-Process SensorHelper, PresentMon -ErrorAction SilentlyContinue
+          if ($left) { throw "Hilfsprozess läuft nach dem Beenden des Servers weiter: $($left.Name -join ', ')" }
           Write-Host "Nach dem Beenden läuft kein Hilfsprozess mehr: ja"
       - name: CPU-Verbrauch messen (30 s, Abfrage jede Sekunde wie App/Nest Hub)
         shell: pwsh

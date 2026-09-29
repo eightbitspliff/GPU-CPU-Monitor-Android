@@ -37,6 +37,7 @@ except ImportError:
 
 from cpu_sensors import CpuSensors
 from lhm_helper import LhmHelper, merge_gpus
+from fps import FpsMonitor
 
 HTTP_PORT = int(os.environ.get("PCMON_PORT", "47811"))
 DISCOVERY_PORT = 47810
@@ -292,6 +293,7 @@ class Sampler(threading.Thread):
         self.cpu_name = cpu_name()
         self.lhm = LhmHelper(with_gpu=self.gpu.source != "nvml")
         self.cpu_sensors = CpuSensors(self.lhm)
+        self.fps = FpsMonitor()
         self.hostname = socket.gethostname()
         self.data = {}
         self.last_request = time.monotonic()
@@ -327,6 +329,11 @@ class Sampler(threading.Thread):
         self._n = getattr(self, "_n", 0) + 1
         if self._n % 3 == 1 or not self.active:
             self.lhm.poke()
+        # FPS-Messung (PresentMon) nur, solange jemand zuschaut
+        if self.active:
+            self.fps.start()
+        else:
+            self.fps.stop()
         cores = psutil.cpu_percent(percpu=True)
         total = round(sum(cores) / len(cores), 1) if cores else 0.0
         temp_c = self.cpu_sensors.temperature()
@@ -348,6 +355,7 @@ class Sampler(threading.Thread):
                 "usage": round(vm.percent, 1),
             },
             "gpus": merge_gpus(self.gpu.read(), self.lhm.gpus()),
+            "fps": self.fps.read(),
             "gpu_source": self.gpu.source,
         }
         with self.lock:

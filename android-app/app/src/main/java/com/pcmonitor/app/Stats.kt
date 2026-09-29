@@ -27,6 +27,9 @@ data class PcStats(
     val ramTotalMb: Double,
     val ramUsage: Double,
     val gpus: List<GpuStats>,
+    /** Aktuelle FPS und Programmname (Vordergrund-Spiel), sonst null. */
+    val fps: Double?,
+    val fpsApp: String?,
 ) {
     val gpu: GpuStats? get() = gpus.firstOrNull()
 }
@@ -93,6 +96,8 @@ object StatsClient {
             ramTotalMb = ram.num("total_mb") ?: 0.0,
             ramUsage = ram.num("usage") ?: 0.0,
             gpus = gpus,
+            fps = j.optJSONObject("fps")?.num("fps"),
+            fpsApp = j.optJSONObject("fps")?.optString("app")?.ifBlank { null },
         )
     }
 }

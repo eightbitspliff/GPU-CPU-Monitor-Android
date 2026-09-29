@@ -88,6 +88,9 @@ def run(sampler, caster, ips, port, start_hidden=False):
     tk.Label(card, text="GPU-Quelle: " + (sampler.gpu.source or "keine GPU-Daten gefunden"),
              bg=CARD, fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", padx=12)
 
+    fps_var = tk.StringVar(value="FPS: –")
+    tk.Label(card, textvariable=fps_var, bg=CARD, fg=GPU, font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=12, pady=(4, 0))
+
     gpu_power_var = tk.StringVar(value="")
     tk.Label(card, textvariable=gpu_power_var, bg=CARD, fg=MUTED, font=("Segoe UI", 8),
              wraplength=300, justify="left").pack(anchor="w", padx=12)
@@ -255,6 +258,8 @@ def run(sampler, caster, ips, port, start_hidden=False):
             src = g0.get("power_sources") or {}
             gpu_power_var.set("GPU-Leistungssensoren: " + ", ".join(
                 f"{k} {round(v)} W" for k, v in sorted(src.items(), key=lambda kv: -kv[1])) if src else "")
+            f = d.get("fps")
+            fps_var.set(f"FPS: {f['fps']}  ({f['app']})" if f else "FPS: – (kein Spiel erkannt)")
             note = d["cpu"].get("temp_note")
             temp_var.set("CPU-Temperatur: " + (f"{round(temp)} °C" if temp is not None else (note or "–")))
             want = lhm.needs_pawnio() and lhm.admin

@@ -26,6 +26,11 @@ DASHBOARD_HTML = r"""<!doctype html>
   #host { font-size:6vh; font-weight:600; }
   #status { font-size:3.6vh; color:var(--muted); }
   #status.err { color:var(--err); }
+  #fps { margin-left:auto; text-align:right; line-height:1; }
+  #fpsV { font-size:6vh; font-weight:700; color:var(--gpu); font-variant-numeric:tabular-nums; }
+  #fps .u { font-size:3vh; color:var(--muted); margin-left:.5vw; }
+  #fpsA { font-size:2.2vh; color:var(--muted); max-width:22vw; white-space:nowrap; overflow:hidden;
+    text-overflow:ellipsis; margin-top:.4vh; }
   .main { flex:1; min-height:0; display:grid; gap:1.8vh 1.4vw;
     grid-template-columns: minmax(0,0.85fr) minmax(0,0.85fr) minmax(0,1.8fr); grid-template-rows: 1fr auto; }
   .card { background:var(--card); border-radius:2vh; padding:1.6vh 1.2vw; min-height:0; min-width:0; }
@@ -56,7 +61,8 @@ DASHBOARD_HTML = r"""<!doctype html>
 </head>
 <body>
 <div class="wrap">
-  <header><div id="clock">--:--</div><div id="host">PC Monitor</div><div id="status">Verbinde…</div></header>
+  <header><div id="clock">--:--</div><div id="host">PC Monitor</div><div id="status">Verbinde…</div>
+    <div id="fps"><span id="fpsV">–</span><span class="u">FPS</span><div id="fpsA"></div></div></header>
   <div class="main">
     <div class="card gauge" id="cpu">
       <svg viewBox="0 0 100 92"><path class="track" d="M21.7 78.3 A40 40 0 1 1 78.3 78.3" pathLength="100"/>
@@ -132,6 +138,8 @@ DASHBOARD_HTML = r"""<!doctype html>
     fails = 0;
     $("host").textContent = d.host;
     $("status").className = ""; $("status").textContent = "Live";
+    $("fpsV").textContent = d.fps ? d.fps.fps : "–";
+    $("fpsA").textContent = d.fps ? d.fps.app : "";
     var cpu = d.cpu, ram = d.ram, gpu = (d.gpus && d.gpus[0]) || null;
     var ci = [];
     if (cpu.power_w != null) ci.push(Math.round(cpu.power_w) + " W");

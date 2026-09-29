@@ -26,6 +26,8 @@ class MainActivity : Activity() {
     private lateinit var cpuName: TextView
     private lateinit var cpuInfo: TextView
     private lateinit var cpuTempNote: TextView
+    private lateinit var fpsText: TextView
+    private lateinit var fpsApp: TextView
     private lateinit var gpuName: TextView
     private lateinit var gpuInfo: TextView
     private lateinit var graph: GraphView
@@ -57,6 +59,8 @@ class MainActivity : Activity() {
         cpuName = findViewById(R.id.cpuName)
         cpuInfo = findViewById(R.id.cpuInfo)
         cpuTempNote = findViewById(R.id.cpuTempNote)
+        fpsText = findViewById(R.id.fpsText)
+        fpsApp = findViewById(R.id.fpsApp)
         gpuName = findViewById(R.id.gpuName)
         gpuInfo = findViewById(R.id.gpuInfo)
         graph = findViewById(R.id.graph)
@@ -147,6 +151,8 @@ class MainActivity : Activity() {
             hostText.text = s.host
             statusText.setTextColor(getColor(R.color.muted))
             statusText.text = "Verbunden · $addr"
+            fpsText.text = s.fps?.let { "${Math.round(it)} FPS" } ?: "– FPS"
+            fpsApp.text = s.fpsApp ?: ""
 
             cpuGauge.setValue(s.cpuUsage)
             cpuName.text = s.cpuName
