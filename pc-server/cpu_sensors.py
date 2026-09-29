@@ -1,11 +1,9 @@
-"""Taktfrequenz je CPU-Kern und CPU-Temperatur.
+"""CPU-Temperatur und -Leistungsaufnahme.
 
-Windows: Leistungsindikatoren über pdh.dll (ctypes, ohne Zusatzpakete).
-         Aktueller Takt = "Processor Frequency" (Nenntakt) * "% Processor Performance"
-         – dieselbe Rechnung wie im Task-Manager.
-         Temperatur: mitgelieferter SensorHelper (LibreHardwareMonitorLib, genau),
-         sonst ACPI-Thermalzone (ohne Adminrechte, aber nur ungefähr).
-Linux:   psutil.cpu_freq(percpu=True) und psutil.sensors_temperatures().
+Windows: mitgelieferter SensorHelper (LibreHardwareMonitorLib, genau),
+         Temperatur notfalls aus der ACPI-Thermalzone (pdh.dll, nur ungefähr).
+         _Pdh wird auch für die GPU-Leistungsindikatoren (AMD/Intel) genutzt.
+Linux:   psutil.sensors_temperatures() und RAPL-Energiezähler.
 """
 
 import glob
@@ -94,44 +92,16 @@ class _Pdh:
         return out
 
 
-def _core_key(name):
-    """'0,5' -> (0, 5); '_Total' und '0,_Total' -> None."""
-    parts = name.split(",")
-    try:
-        return tuple(int(p) for p in parts)
-    except ValueError:
-        return None
-
-
 class CpuSensors:
     def __init__(self, lhm=None):
         self._pdh = None
+        self._pdh_tried = False
         self._lhm = lhm
         self._rapl_last = None  # (Zeit, Energie in µJ) für Linux
-        if IS_WINDOWS:
-            try:
-                self._pdh = _Pdh({
-                    "perf": r"\Processor Information(*)\% Processor Performance",
-                    "freq": r"\Processor Information(*)\Processor Frequency",
-                    "zone": r"\Thermal Zone Information(*)\Temperature",
-                })
-            except Exception as e:
-                print("Leistungsindikatoren nicht verfügbar:", e)
 
-    def read(self):
-        """-> (Takt je Kern in MHz oder None, mittlerer Takt in MHz, Temperatur in °C)"""
-        cores = self._core_freqs()
-        if cores:
-            valid = [f for f in cores if f]
-            avg = round(sum(valid) / len(valid)) if valid else None
-        else:
-            avg = None
-            try:
-                freq = psutil.cpu_freq()
-                avg = round(freq.current) if freq and freq.current else None
-            except Exception:
-                pass
-        return cores, avg, self._temperature()
+    def temperature(self):
+        """CPU-Temperatur in °C (oder None)."""
+        return self._temperature()
 
     def power(self):
         """Leistungsaufnahme des Prozessors in Watt (oder None)."""
@@ -158,34 +128,20 @@ class CpuSensors:
             return None
         return round((energy - last[1]) / 1e6 / (now - last[0]), 1)
 
-    def _core_freqs(self):
-        if self._pdh is not None:
-            try:
-                self._pdh.collect()
-                perf = self._pdh.values("perf")
-                base = self._pdh.values("freq")
-                cores = []
-                for name in sorted((n for n in perf if _core_key(n)), key=_core_key):
-                    b = base.get(name)
-                    cores.append(round(b * perf[name] / 100.0) if b else None)
-                if cores:
-                    return cores
-            except Exception:
-                pass
-        try:
-            freqs = psutil.cpu_freq(percpu=True)
-            if freqs and len(freqs) > 1:
-                return [round(f.current) if f.current else None for f in freqs]
-        except Exception:
-            pass
-        return None
-
     def _temperature(self):
         t = self._lhm.cpu_temp() if self._lhm is not None else None
         if _valid_temp(t):
             return round(t, 1)
+        if IS_WINDOWS and not self._pdh_tried:
+            # ACPI-Thermalzone nur als Notlösung und erst, wenn das Sensor-Modul nichts liefert
+            self._pdh_tried = True
+            try:
+                self._pdh = _Pdh({"zone": r"\Thermal Zone Information(*)\Temperature"})
+            except Exception:
+                self._pdh = None
         if self._pdh is not None:
             try:
+                self._pdh.collect()
                 zones = [k - 273.15 for k in self._pdh.values("zone").values()]
                 zones = [t for t in zones if _valid_temp(t)]
                 if zones:

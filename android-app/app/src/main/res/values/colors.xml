@@ -7,7 +7,6 @@
     <color name="cpu">#FF3FA9F5</color>
     <color name="gpu">#FF7BD85A</color>
     <color name="ram">#FFF5A623</color>
-    <color name="net">#FFB58CFF</color>
     <color name="track">#FF262C36</color>
     <color name="error">#FFFF5C5C</color>
 </resources>

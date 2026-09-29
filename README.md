@@ -29,8 +29,7 @@ hinter das Ziel ` --tray` schreiben – dann startet er direkt unsichtbar im Tra
 
 ## App-Funktionen
 
-- Große Anzeigen für **CPU** und **GPU** (Auslastung in %), dazu Takt, Temperatur, Stromverbrauch
-- **WLAN** (Netzwerk, Empfang, Band) und aktueller **Netzwerk-Traffic**
+- Große Anzeigen für **CPU** und **GPU** (Auslastung in %), dazu Leistungsaufnahme und Temperatur
 - Verlaufsdiagramm der letzten 2 Minuten
 - RAM- und VRAM-Belegung
 - Bildschirm bleibt an (z.B. als Zweitdisplay neben dem PC), abschaltbar im Menü ⋮
@@ -59,9 +58,9 @@ Der Nest Hub lädt die Seite direkt vom PC; das Handy muss dafür nicht an sein.
 
 | GPU | Quelle | Werte |
 |---|---|---|
-| NVIDIA | NVML / `nvidia-smi` | Auslastung, VRAM, Temperatur, Leistung, Takt |
-| AMD / Intel unter Windows | Windows-Leistungsindikatoren + LibreHardwareMonitorLib | Auslastung, VRAM, Temperatur, Leistung, Takt |
-| AMD unter Linux | sysfs | Auslastung, VRAM, Temperatur, Takt |
+| NVIDIA | NVML / `nvidia-smi` | Auslastung, VRAM, Temperatur, Leistung |
+| AMD / Intel unter Windows | Windows-Leistungsindikatoren + LibreHardwareMonitorLib | Auslastung, VRAM, Temperatur, Leistung |
+| AMD unter Linux | sysfs | Auslastung, VRAM, Temperatur |
 
 ## CPU-Temperatur unter Windows
 
@@ -75,13 +74,11 @@ bringt dafür LibreHardwareMonitorLib und den Installer des signierten Open-Sour
 
 ## Ressourcenverbrauch
 
-Der Server ist auf möglichst wenig Last ausgelegt:
-- Keine WMI-/PowerShell-Abfragen im laufenden Betrieb (Leistungsindikatoren direkt über `pdh.dll`,
-  WLAN über die Native-WiFi-API, GPU über NVML).
-- Gemessen wird im Sekundentakt nur, solange App, Nest Hub oder das Server-Fenster Werte anzeigen;
-  sonst nur alle 10 s (für den Tray-Tooltip).
-- Das Sensor-Modul misst nur auf Anfrage, bei NVIDIA nur die CPU; CPU-Temperatur/-Leistung alle 2 s,
-  WLAN-Empfang alle 5 s.
+Der Server ist auf möglichst wenig CPU-Last ausgelegt:
+- Keine WMI-/PowerShell-Abfragen im laufenden Betrieb (GPU über NVML bzw. `pdh.dll`).
+- Messung alle 2 s, solange App, Nest Hub oder das Server-Fenster Werte anzeigen; sonst nur
+  alle 10 s (für den Tray-Tooltip). App und Nest Hub fragen ebenfalls nur alle 2 s ab.
+- Das Sensor-Modul misst nur auf Anfrage (alle 4 s), bei NVIDIA nur die CPU.
 - Server und Sensor-Modul laufen mit niedriger Priorität und im Effizienzmodus (EcoQoS).
 
 ## Server ohne EXE (mit Python)

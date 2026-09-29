@@ -13,7 +13,7 @@ DASHBOARD_HTML = r"""<!doctype html>
 <style>
   :root {
     --bg:#0E1116; --card:#171B22; --text:#E8ECF2; --muted:#8A94A6;
-    --cpu:#3FA9F5; --gpu:#7BD85A; --ram:#F5A623; --net:#B58CFF; --track:#262C36; --err:#FF5C5C;
+    --cpu:#3FA9F5; --gpu:#7BD85A; --ram:#F5A623; --track:#262C36; --err:#FF5C5C;
   }
   * { box-sizing:border-box; }
   html,body { margin:0; height:100%; background:var(--bg); color:var(--text);
@@ -45,8 +45,6 @@ DASHBOARD_HTML = r"""<!doctype html>
   .graph canvas { flex:1; min-height:0; width:100%; }
   .bars .row { font-size:4.2vh; }
   .bars .row + .row { margin-top:1.4vh; }
-  .bars .row.small, .bars .row.net { font-size:3.7vh; }
-  .bars .row span, .bars .row.small { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }
   .bar { height:1.8vh; background:var(--track); border-radius:1vh; margin-top:.8vh; overflow:hidden; }
   .bar > div { height:100%; width:0; border-radius:1vh; transition:width .6s ease-out; }
   @media (max-aspect-ratio: 1/1) {
@@ -76,15 +74,14 @@ DASHBOARD_HTML = r"""<!doctype html>
     <div class="card bars">
       <div class="row"><span id="ramT">RAM –</span><div class="bar"><div id="ramB" style="background:var(--ram)"></div></div></div>
       <div class="row"><span id="vramT">VRAM –</span><div class="bar"><div id="vramB" style="background:var(--gpu)"></div></div></div>
-      <div class="row net"><span id="wifiT">WLAN –</span><div class="bar"><div id="wifiB" style="background:var(--net)"></div></div></div>
-      <div class="row small" id="netT">Traffic –</div>
     </div>
   </div>
 </div>
 <script>
 (function () {
   if (/[?&]cast=1/.test(location.search)) document.body.className = "cast";
-  var CAP = 300, hist = { cpu: [], gpu: [] }, fails = 0;
+  var CAP = 150,  // 5 Minuten bei einem Wert alle 2 s
+      hist = { cpu: [], gpu: [] }, fails = 0;
   function $(id) { return document.getElementById(id); }
   function pct(v) { return v == null ? "–" : Math.round(v) + " %"; }
   function gb(mb) { return mb == null ? "–" : (mb / 1024).toFixed(1).replace(".", ",") + " GB"; }
@@ -137,12 +134,10 @@ DASHBOARD_HTML = r"""<!doctype html>
     $("status").className = ""; $("status").textContent = "Live";
     var cpu = d.cpu, ram = d.ram, gpu = (d.gpus && d.gpus[0]) || null;
     var ci = [];
-    if (cpu.freq_mhz != null) ci.push((cpu.freq_mhz / 1000).toFixed(2).replace(".", ",") + " GHz");
     if (cpu.power_w != null) ci.push(Math.round(cpu.power_w) + " W");
     if (cpu.temp_c != null) ci.push(Math.round(cpu.temp_c) + " °C");
     setGauge("cpu", cpu.usage, cpu.name, ci);
     var gi = [];
-    if (gpu && gpu.clock_mhz != null) gi.push(Math.round(gpu.clock_mhz) + " MHz");
     if (gpu && gpu.power_w != null) gi.push(Math.round(gpu.power_w) + " W");
     if (gpu && gpu.temp_c != null) gi.push(Math.round(gpu.temp_c) + " °C");
     setGauge("gpu", gpu ? gpu.usage : null, gpu ? gpu.name : "Keine GPU-Daten", gi);
@@ -154,29 +149,8 @@ DASHBOARD_HTML = r"""<!doctype html>
                                  : "VRAM  " + gb(gpu.mem_used_mb) + " belegt";
       $("vramB").style.width = (p || 0) + "%";
     } else { $("vramT").textContent = "VRAM –"; $("vramB").style.width = "0"; }
-    renderNet(d.net || {});
     push(hist.cpu, cpu.usage); push(hist.gpu, gpu ? gpu.usage : null);
     draw();
-  }
-
-  function rate(bps) {
-    if (bps >= 1e9) return (bps / 1e9).toFixed(2).replace(".", ",") + " GBit/s";
-    if (bps >= 1e6) return (bps / 1e6).toFixed(1).replace(".", ",") + " MBit/s";
-    return Math.round(bps / 1e3) + " kBit/s";
-  }
-  function renderNet(n) {
-    var w = n.wifi, t = n.traffic, parts;
-    if (!w) { $("wifiT").textContent = "WLAN –"; $("wifiB").style.width = "0"; }
-    else if (!w.connected) { $("wifiT").textContent = "WLAN  nicht verbunden"; $("wifiB").style.width = "0"; }
-    else {
-      parts = [w.ssid || "verbunden"];
-      if (w.signal != null) parts.push(Math.round(w.signal) + " %");
-      if (w.band) parts.push(w.band);
-      $("wifiT").textContent = "WLAN  " + parts.join("  ·  ");
-      $("wifiB").style.width = (w.signal || 0) + "%";
-    }
-    $("netT").textContent = !t ? "Traffic –"
-      : (t.wifi ? "WLAN" : t.iface) + "  ↓ " + rate(t.down_bps) + "   ↑ " + rate(t.up_bps);
   }
 
   function fail() {
@@ -202,7 +176,7 @@ DASHBOARD_HTML = r"""<!doctype html>
   }
   tick(); setInterval(tick, 1000);
   window.addEventListener("resize", draw);
-  poll(); setInterval(poll, 1000);
+  poll(); setInterval(poll, 2000);
 })();
 </script>
 </body>

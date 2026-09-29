@@ -16,7 +16,6 @@ import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
-import java.util.Locale
 
 class MainActivity : Activity() {
 
@@ -36,9 +35,6 @@ class MainActivity : Activity() {
     private lateinit var ramBar: BarView
     private lateinit var vramText: TextView
     private lateinit var vramBar: BarView
-    private lateinit var wifiText: TextView
-    private lateinit var wifiBar: BarView
-    private lateinit var trafficText: TextView
     private lateinit var searchButton: Button
 
     private var cpuSeries = 0
@@ -46,7 +42,7 @@ class MainActivity : Activity() {
     private var failures = 0
     private var searching = false
 
-    private val poller = Poller({ Prefs.address(this) }, 1000L) { result ->
+    private val poller = Poller({ Prefs.address(this) }, 2000L) { result ->
         runOnUiThread { onStats(result) }
     }
 
@@ -70,9 +66,6 @@ class MainActivity : Activity() {
         ramBar = findViewById(R.id.ramBar)
         vramText = findViewById(R.id.vramText)
         vramBar = findViewById(R.id.vramBar)
-        wifiText = findViewById(R.id.wifiText)
-        wifiBar = findViewById(R.id.wifiBar)
-        trafficText = findViewById(R.id.trafficText)
         searchButton = findViewById(R.id.searchButton)
 
         val cpuColor = getColor(R.color.cpu)
@@ -81,7 +74,6 @@ class MainActivity : Activity() {
         gpuGauge.label = "GPU"; gpuGauge.color = gpuColor
         ramBar.color = getColor(R.color.ram)
         vramBar.color = gpuColor
-        wifiBar.color = getColor(R.color.net)
         coreGrid.color = cpuColor
         cpuSeries = graph.addSeries(cpuColor)
         gpuSeries = graph.addSeries(gpuColor)
@@ -159,7 +151,6 @@ class MainActivity : Activity() {
             cpuGauge.setValue(s.cpuUsage)
             cpuName.text = s.cpuName
             cpuInfo.text = listOfNotNull(
-                s.cpuFreqMhz?.let { String.format(Locale.GERMANY, "%.2f GHz", it / 1000.0) },
                 s.cpuPowerW?.let { "${Math.round(it)} W" },
                 s.cpuTempC?.let { "${Math.round(it)} °C" } ?: "– °C",
             ).joinToString("\n")
@@ -168,18 +159,17 @@ class MainActivity : Activity() {
             cpuTempNote.text = note ?: ""
             cpuTempNote.visibility = if (note != null) View.VISIBLE else View.GONE
 
-            coreGrid.setCores(s.coreUsage, s.coreFreqMhz)
-            val n = maxOf(s.coreUsage.size, s.coreFreqMhz.size)
+            coreGrid.setCores(s.coreUsage, emptyList())
+            val n = s.coreUsage.size
             coresTitle.text = buildString {
                 append(if (n > 0) "CPU-Kerne ($n)" else "CPU-Kerne")
-                append(if (coreGrid.showsFrequency) "  ·  Takt in GHz" else "  ·  Auslastung")
+                append("  ·  Auslastung")
             }
 
             val g = s.gpu
             gpuGauge.setValue(g?.usage)
             gpuName.text = g?.name ?: "Keine GPU-Daten"
             gpuInfo.text = if (g == null) "" else listOfNotNull(
-                g.clockMhz?.let { "${Math.round(it)} MHz" },
                 g.powerW?.let { "${Math.round(it)} W" },
                 g.tempC?.let { "${Math.round(it)} °C" },
             ).joinToString("\n")
@@ -197,8 +187,6 @@ class MainActivity : Activity() {
                 vramBar.setValue(null)
             }
 
-            showNetwork(s)
-
             graph.push(cpuSeries, s.cpuUsage.toFloat())
             graph.push(gpuSeries, g?.usage?.toFloat() ?: Float.NaN)
             graph.commit()
@@ -214,25 +202,6 @@ class MainActivity : Activity() {
             graph.push(gpuSeries, Float.NaN)
             graph.commit()
         }
-    }
-
-    private fun showNetwork(s: PcStats) {
-        val w = s.wifi
-        wifiText.text = when {
-            w == null -> "WLAN –"
-            !w.connected -> "WLAN  nicht verbunden"
-            else -> "WLAN  " + listOfNotNull(
-                w.ssid ?: "verbunden",
-                w.signal?.let { "${Math.round(it)} %" },
-                w.band,
-                w.rxMbps?.let { "${Math.round(it)} MBit/s" },
-            ).joinToString("  ·  ")
-        }
-        wifiBar.setValue(if (w?.connected == true) w.signal else null)
-
-        val t = s.traffic
-        trafficText.text = if (t == null) "Traffic –"
-        else "${if (t.isWifi) "WLAN-Traffic" else "Traffic (${t.iface})"}  ↓ ${fmtRate(t.downBps)}   ↑ ${fmtRate(t.upBps)}"
     }
 
     private fun search() {

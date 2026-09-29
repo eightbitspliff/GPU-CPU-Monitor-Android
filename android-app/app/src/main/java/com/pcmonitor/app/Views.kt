@@ -87,7 +87,7 @@ class GraphView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null,
 ) : View(context, attrs) {
 
-    private val capacity = 300 // 5 Minuten bei einem Wert pro Sekunde
+    private val capacity = 150 // 5 Minuten bei einem Wert alle 2 s
     private val series = mutableListOf<Pair<Int, ArrayDeque<Float>>>()
 
     private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {

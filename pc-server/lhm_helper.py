@@ -173,8 +173,7 @@ def merge_gpus(gpus, lhm_gpus):
         return gpus
     if not gpus:
         return [{"name": g.get("name") or "GPU", "usage": g.get("usage"), "mem_used_mb": None,
-                 "mem_total_mb": None, "temp_c": g.get("temp_c"), "power_w": g.get("power_w"),
-                 "clock_mhz": g.get("clock_mhz"), "power_sources": g.get("powers")}
+                 "mem_total_mb": None, "temp_c": g.get("temp_c"), "power_w": g.get("power_w"), "power_sources": g.get("powers")}
                 for g in _discrete_first(lhm_gpus)]
     remaining = _discrete_first(lhm_gpus)
     for gpu in gpus:
@@ -182,7 +181,7 @@ def merge_gpus(gpus, lhm_gpus):
         if match is None:
             continue
         remaining.remove(match)
-        for key in ("clock_mhz", "temp_c"):
+        for key in ("temp_c",):
             if gpu.get(key) is None and match.get(key) is not None:
                 gpu[key] = match[key]
         # Leistung: alle Sensoren sammeln, der höchste ist die Gesamtaufnahme der Karte

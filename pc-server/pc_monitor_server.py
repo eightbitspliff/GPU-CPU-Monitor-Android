@@ -37,12 +37,11 @@ except ImportError:
 
 from cpu_sensors import CpuSensors
 from lhm_helper import LhmHelper, merge_gpus
-from net_sensors import NetSensors
 
 HTTP_PORT = int(os.environ.get("PCMON_PORT", "47811"))
 DISCOVERY_PORT = 47810
 DISCOVERY_REQUEST = b"PCMON_DISCOVER"
-SAMPLE_INTERVAL = 1.0
+SAMPLE_INTERVAL = 2.0  # App und Nest Hub fragen ebenfalls alle 2 s ab
 IDLE_INTERVAL = 10.0   # niemand schaut zu: nur alle 10 s messen (Tray-Tooltip)
 ACTIVE_TIMEOUT = 15.0  # so lange nach der letzten Abfrage wird im Sekundentakt gemessen
 IS_WINDOWS = os.name == "nt"
@@ -109,7 +108,7 @@ class GpuReader:
         self.source = None
         self._nvml = None
         self._nvml_handles = []
-        self._nvml_energy = {}
+        self._nvml_static = {}
         self._win_value = None
         self._win_pdh = None
 
@@ -136,45 +135,22 @@ class GpuReader:
         except Exception:
             return False
 
-    def _nvml_power(self, h):
-        """Alle Leistungswerte, die NVML hergibt (Watt). Je nach Karte/Treiber meldet
-        die einfache Abfrage nur einen geglätteten oder Teilwert, daher mehrere Wege."""
-        n = self._nvml
-        out = {}
-        try:
-            out["NVML"] = round(n.nvmlDeviceGetPowerUsage(h) / 1000.0, 1)
-        except Exception:
-            pass
-        try:  # Momentanwert (neuere Treiber)
-            fv = n.nvmlDeviceGetFieldValues(h, [186])[0]  # NVML_FI_DEV_POWER_INSTANT
-            if fv.nvmlReturn == 0 and fv.value.uiVal:
-                out["NVML momentan"] = round(fv.value.uiVal / 1000.0, 1)
-        except Exception:
-            pass
-        try:  # Energiezähler der ganzen Karte (mJ) -> mittlere Leistung seit letzter Messung
-            energy = n.nvmlDeviceGetTotalEnergyConsumption(h)
-            now = time.monotonic()
-            key = id(h)  # Handles bleiben für die Laufzeit dieselben Objekte
-            last = self._nvml_energy.get(key)
-            self._nvml_energy[key] = (now, energy)
-            if last and energy >= last[1] and now - last[0] > 0.2:
-                out["NVML Energie"] = round((energy - last[1]) / 1000.0 / (now - last[0]), 1)
-        except Exception:
-            pass
-        return {k: v for k, v in out.items() if 0 < v < 2000}
-
     def _read_nvml(self):
+        # Pro Messung nur 4 Treiberaufrufe je GPU; Name und VRAM-Größe ändern sich nicht
         n = self._nvml
         result = []
-        for h in self._nvml_handles:
-            gpu = {"name": None, "usage": None, "mem_used_mb": None,
-                   "mem_total_mb": None, "temp_c": None, "power_w": None,
-                   "clock_mhz": None}
-            try:
-                name = n.nvmlDeviceGetName(h)
-                gpu["name"] = name.decode() if isinstance(name, bytes) else name
-            except Exception:
-                pass
+        for i, h in enumerate(self._nvml_handles):
+            static = self._nvml_static.get(i)
+            if static is None:
+                static = {"name": "GPU", "mem_total_mb": None}
+                try:
+                    name = n.nvmlDeviceGetName(h)
+                    static["name"] = name.decode() if isinstance(name, bytes) else name
+                except Exception:
+                    pass
+                self._nvml_static[i] = static
+            gpu = {"name": static["name"], "usage": None, "mem_used_mb": None,
+                   "mem_total_mb": static["mem_total_mb"], "temp_c": None, "power_w": None}
             try:
                 gpu["usage"] = float(n.nvmlDeviceGetUtilizationRates(h).gpu)
             except Exception:
@@ -182,19 +158,16 @@ class GpuReader:
             try:
                 mem = n.nvmlDeviceGetMemoryInfo(h)
                 gpu["mem_used_mb"] = round(mem.used / 1048576)
-                gpu["mem_total_mb"] = round(mem.total / 1048576)
+                gpu["mem_total_mb"] = static["mem_total_mb"] = round(mem.total / 1048576)
             except Exception:
                 pass
             try:
                 gpu["temp_c"] = float(n.nvmlDeviceGetTemperature(h, n.NVML_TEMPERATURE_GPU))
             except Exception:
                 pass
-            sources = self._nvml_power(h)
-            if sources:
-                gpu["power_w"] = max(sources.values())
-                gpu["power_sources"] = sources
-            try:
-                gpu["clock_mhz"] = float(n.nvmlDeviceGetClockInfo(h, n.NVML_CLOCK_GRAPHICS))
+            try:  # Leistungsaufnahme der ganzen Karte
+                w = n.nvmlDeviceGetPowerUsage(h) / 1000.0
+                gpu["power_w"] = round(w, 1) if 0 < w < 2000 else None
             except Exception:
                 pass
             result.append(gpu)
@@ -205,7 +178,7 @@ class GpuReader:
         try:
             out = subprocess.check_output(
                 ["nvidia-smi",
-                 "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,clocks.gr",
+                 "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw",
                  "--format=csv,noheader,nounits"],
                 text=True, timeout=5, creationflags=NO_WINDOW,
                 stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -224,8 +197,7 @@ class GpuReader:
             if len(p) < 6:
                 continue
             result.append({"name": p[0], "usage": num(p[1]), "mem_used_mb": num(p[2]),
-                           "mem_total_mb": num(p[3]), "temp_c": num(p[4]), "power_w": num(p[5]),
-                           "clock_mhz": num(p[6]) if len(p) > 6 else None})
+                           "mem_total_mb": num(p[3]), "temp_c": num(p[4]), "power_w": num(p[5])})
         return result or None
 
     # Windows: Leistungsindikatoren (funktioniert für jede GPU) ---------------
@@ -241,7 +213,7 @@ class GpuReader:
             return False
         self._win_value = {"name": _gpu_name_from_registry() or "GPU", "usage": None,
                            "mem_used_mb": None, "mem_total_mb": None, "temp_c": None,
-                           "power_w": None, "clock_mhz": None}
+                           "power_w": None}
         return True
 
     def _read_windows_counters(self):
@@ -281,21 +253,13 @@ class GpuReader:
                     return None
 
             gpu = {"name": card, "usage": None, "mem_used_mb": None,
-                   "mem_total_mb": None, "temp_c": None, "power_w": None,
-                   "clock_mhz": None}
+                   "mem_total_mb": None, "temp_c": None, "power_w": None}
             v = rd(busy)
             gpu["usage"] = float(v) if v else None
             v = rd(os.path.join(dev, "mem_info_vram_used"))
             gpu["mem_used_mb"] = round(int(v) / 1048576) if v else None
             v = rd(os.path.join(dev, "mem_info_vram_total"))
             gpu["mem_total_mb"] = round(int(v) / 1048576) if v else None
-            sclk = rd(os.path.join(dev, "pp_dpm_sclk"))  # aktive Stufe ist mit * markiert
-            for sl in (sclk or "").splitlines():
-                if sl.strip().endswith("*"):
-                    try:
-                        gpu["clock_mhz"] = float(sl.split(":")[1].strip().split("Mhz")[0].split("MHz")[0])
-                    except (IndexError, ValueError):
-                        pass
             hwmon = os.path.join(dev, "hwmon")
             if os.path.isdir(hwmon):
                 for h in os.listdir(hwmon):
@@ -328,7 +292,6 @@ class Sampler(threading.Thread):
         self.cpu_name = cpu_name()
         self.lhm = LhmHelper(with_gpu=self.gpu.source != "nvml")
         self.cpu_sensors = CpuSensors(self.lhm)
-        self.net = NetSensors()
         self.hostname = socket.gethostname()
         self.data = {}
         self.last_request = time.monotonic()
@@ -358,13 +321,14 @@ class Sampler(threading.Thread):
                 print("Messfehler:", e)
 
     def sample(self):
-        # Sensor-Modul (CPU-Temperatur/-Leistung) alle 2 s; misst parallel, Ergebnis gilt ab dem nächsten Durchlauf
+        # Sensor-Modul (CPU-Temperatur/-Leistung) nur jede 2. Messung (alle 4 s) – ändert sich
+        # langsam; es misst parallel, das Ergebnis gilt ab dem nächsten Durchlauf
         self._n = getattr(self, "_n", 0) + 1
         if self._n % 2 == 1 or not self.active:
             self.lhm.poke()
         cores = psutil.cpu_percent(percpu=True)
         total = round(sum(cores) / len(cores), 1) if cores else 0.0
-        core_freqs, freq_mhz, temp_c = self.cpu_sensors.read()
+        temp_c = self.cpu_sensors.temperature()
         vm = psutil.virtual_memory()
         data = {
             "host": self.hostname,
@@ -373,8 +337,6 @@ class Sampler(threading.Thread):
                 "name": self.cpu_name,
                 "usage": total,
                 "cores": [round(c, 1) for c in cores],
-                "core_freq_mhz": core_freqs,
-                "freq_mhz": freq_mhz,
                 "temp_c": temp_c,
                 "power_w": self.cpu_sensors.power(),
                 "temp_note": self.lhm.cpu_temp_note() if temp_c is None else None,
@@ -385,7 +347,6 @@ class Sampler(threading.Thread):
                 "usage": round(vm.percent, 1),
             },
             "gpus": merge_gpus(self.gpu.read(), self.lhm.gpus()),
-            "net": self.net.read(),
             "gpu_source": self.gpu.source,
         }
         with self.lock:

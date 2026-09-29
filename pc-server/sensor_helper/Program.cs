@@ -107,7 +107,6 @@ static class Program
                     gpus.Add("{\"name\":" + Str(hw.Name) + ",\"vendor\":\"" + vendor + "\"" +
                              ",\"power_w\":" + Num(GpuPower(sensors)) +
                              ",\"powers\":" + PowerList(sensors) +
-                             ",\"clock_mhz\":" + Num(Pick(sensors, SensorType.Clock, "^GPU Core$", "Core", "Shader")) +
                              ",\"temp_c\":" + Num(Pick(sensors, SensorType.Temperature, "^GPU Core$", "Core", "Edge")) +
                              ",\"usage\":" + Num(Pick(sensors, SensorType.Load, "^GPU Core$", "^D3D 3D$", "Core")) +
                              "}");
