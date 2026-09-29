@@ -200,9 +200,11 @@ def run(sampler, caster, ips, port, start_hidden=False):
             if src:
                 sensor_var.set(f"CPU Power/Temp: {src}")
             elif d.get("cpu_sensor_running"):
-                sensor_var.set("CPU Power/Temp: keine Quelle gefunden – Windows liefert diese Werte "
-                               "nicht selbst. LibreHardwareMonitor starten, dann erscheinen sie automatisch.")
-            need_link = not src and d.get("cpu_sensor_running")
+                sensor_var.set("CPU Power/Temp: Windows liefert auf diesem PC keine Werte. "
+                               "Mit LibreHardwareMonitor im Hintergrund erscheinen sie automatisch.")
+            cpu_d = d.get("cpu") or {}
+            need_link = bool(d.get("cpu_sensor_running")) and (
+                cpu_d.get("power_w") is None or cpu_d.get("temp_c") is None) and "Libre" not in (src or "")
             if need_link != lhm_shown[0]:
                 if need_link:
                     lhm_link.pack(anchor="w", padx=12, after=sensor_label)

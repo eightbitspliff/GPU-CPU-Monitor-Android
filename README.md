@@ -65,12 +65,13 @@ Der Nest Hub lädt die Seite direkt vom PC; das Handy muss dafür nicht an sein.
 | Quelle | Werte | Hinweis |
 |---|---|---|
 | [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (läuft im Hintergrund) | Leistung, Temperatur | beste Werte unter Windows, auch für AMD |
+| Windows-Thermalzone (ACPI) | Temperatur | ohne Zusatzprogramm; Mainboard-Fühler, Näherungswert |
 | Windows-Leistungsindikator „Energy Meter“ (RAPL) | Leistung | ohne Zusatzprogramm, nicht auf jedem PC vorhanden |
 | Linux: `/sys/class/powercap`, Sensoren | Leistung, Temperatur | Leistung ggf. nur mit root |
 
-Windows selbst stellt CPU-Temperatur und (bei den meisten CPUs) CPU-Leistung nicht bereit –
-dafür braucht es einen Hardware-Treiber, wie ihn LibreHardwareMonitor mitbringt. Zeigt die
-CPU „–“ an:
+Ohne Zusatzprogramm nutzt der Server, was Windows selbst hergibt (Thermalzone, Energy Meter).
+Genaue Werte direkt vom CPU-Sensor liefert Windows nur über einen Hardware-Treiber, wie ihn
+LibreHardwareMonitor mitbringt. Zeigt die CPU „–“ an oder sind die Werte ungenau:
 
 1. [LibreHardwareMonitor herunterladen](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/latest), entpacken, `LibreHardwareMonitor.exe` starten (Adminrechte bestätigen)
 2. In LibreHardwareMonitor unter **Options** „Start Minimized“, „Minimize To Tray“ und

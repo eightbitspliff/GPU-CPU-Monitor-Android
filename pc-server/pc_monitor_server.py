@@ -132,8 +132,8 @@ class CpuSensors:
 
     Windows: LibreHardwareMonitor / OpenHardwareMonitor (falls gestartet, liefert
     Leistung + Temperatur; per WMI oder über den LHM-Webserver auf Port 8085),
-    sonst Windows-Leistungsindikator "Energy Meter" (RAPL, nur Leistung).
-    Windows selbst stellt die CPU-Temperatur ohne solchen Treiber nicht bereit.
+    ohne Zusatzprogramm: Windows-Thermalzone (ACPI, Temperatur-Näherung) und
+    Windows-Leistungsindikator "Energy Meter" (RAPL, Leistung – nicht auf jedem PC).
     Linux: RAPL über /sys/class/powercap und psutil für die Temperatur.
     """
 
@@ -180,12 +180,25 @@ while (Test-Parent) {
     $tp = Pick $list 'Temperature' 'Package|Tctl|Tdie'
     if ($tp) { $t = $tp.V }
   }
-  # 3) Windows-Leistungsindikator "Energy Meter" (RAPL), nur Leistung
+  # 3) Windows-Thermalzone (ACPI), ohne Zusatzprogramm und ohne Adminrechte.
+  #    Mainboard-Fühler nahe der CPU – auf den meisten PCs ein brauchbarer Näherungswert.
+  if ($t -eq $null) {
+    $z = Get-CimInstance Win32_PerfFormattedData_Counters_ThermalZoneInformation |
+      ForEach-Object {
+        if ($_.HighPrecisionTemperature -gt 0) { $_.HighPrecisionTemperature / 10.0 - 273.15 }
+        elseif ($_.Temperature -gt 0) { $_.Temperature - 273.15 }
+      } | Where-Object { $_ -gt 5 -and $_ -lt 125 } | Sort-Object -Descending | Select-Object -First 1
+    if ($z -ne $null) {
+      $t = [math]::Round($z, 1)
+      $src = if ($src) { $src + ' + Windows-Thermalzone' } else { 'Windows-Thermalzone' }
+    }
+  }
+  # 4) Windows-Leistungsindikator "Energy Meter" (RAPL), nur Leistung
   if ($p -eq $null) {
     $e = Get-CimInstance Win32_PerfFormattedData_Counters_EnergyMeter | Where-Object { $_.Name -match 'PKG' } | Select-Object -First 1
     if ($e -and $e.Power -gt 0) {
       $p = $e.Power / 1000
-      if (-not $src) { $src = 'Windows Energy Meter' }
+      $src = if ($src) { $src + ' + Energy Meter' } else { 'Windows Energy Meter' }
     }
   }
   $ps = if ($p -ne $null) { ([double]$p).ToString($inv) } else { '' }
